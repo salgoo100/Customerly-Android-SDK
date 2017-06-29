@@ -24,7 +24,7 @@ public class IU_NetworkReceiver extends BroadcastReceiver {
 
     public static void registerLollipopNetworkReceiver(Context context) {
         if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            final ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
             cm.registerNetworkCallback(
                     new NetworkRequest.Builder()
                             .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)

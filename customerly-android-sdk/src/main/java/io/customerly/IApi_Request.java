@@ -198,23 +198,43 @@ class IApi_Request<RES> extends AsyncTask<JSONObject, Void, RES> {
                     if(progressView != null) {
                         View parent = (View) progressView.getParent();
                         if(parent != null) {//Trick, if i post the runnable on the progressView with visibility gone, it will be never called
-                            parent.post(() -> progressView.setVisibility(View.VISIBLE));
+                            parent.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    progressView.setVisibility(View.VISIBLE);
+                                }
+                            });
                         }
                     }
                     final ProgressDialog pd = pd_tmp;
                     new IApi_Request<>(this._Endpoint,
-                            this._ResponseConverter != null ? this._ResponseConverter : data -> null,
-                            (statusCode, result) -> {
-                                if(pd != null) {
-                                    try {
-                                        pd.dismiss();
-                                    } catch (Exception ignored) { }
+                            this._ResponseConverter != null ? this._ResponseConverter : new ResponseConverter<RES>() {
+                                @Nullable
+                                @Override
+                                public RES convert(@NonNull JSONObject data) throws JSONException {
+                                    return null;
                                 }
-                                if(progressView != null) {
-                                    progressView.post(() -> progressView.setVisibility(this._ProgressView_HiddenVisibilityType));
-                                }
-                                if(this._ResponseReceiver != null) {
-                                    this._ResponseReceiver.onResponse(statusCode, result);
+                            },
+                            new ResponseReceiver<RES>() {
+                                @Override
+                                public void onResponse(@ResponseState int statusCode, @Nullable RES result) {
+                                    if (pd != null) {
+                                        try {
+                                            pd.dismiss();
+                                        } catch (Exception ignored) {
+                                        }
+                                    }
+                                    if (progressView != null) {
+                                        progressView.post(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                progressView.setVisibility(Builder.this._ProgressView_HiddenVisibilityType);
+                                            }
+                                        });
+                                    }
+                                    if (Builder.this._ResponseReceiver != null) {
+                                        Builder.this._ResponseReceiver.onResponse(statusCode, result);
+                                    }
                                 }
                             },
                             this._Trials, this._TokenMandatory)

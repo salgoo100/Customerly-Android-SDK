@@ -54,12 +54,17 @@ class PW_AlertMessage extends PopupWindow {
 
     private long _ConversationID = 0, _MessageID = 0;
 
-    private final Runnable _FadeOutAfterTOT = this::fadeOut;
+    private final Runnable _FadeOutAfterTOT = new Runnable() {
+        @Override
+        public void run() {
+            PW_AlertMessage.this.fadeOut();
+        }
+    };
     private boolean _FadingOut = false;
     @Nullable private String _MessageRawLink;
 
     @SuppressLint("InflateParams")
-    private PW_AlertMessage(@NonNull Activity activity) {
+    private PW_AlertMessage(@NonNull final Activity activity) {
         super(activity.getLayoutInflater().inflate(R.layout.io_customerly__alert_message, null), WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT, false);
         this.getContentView().setOnTouchListener(new View.OnTouchListener() {
             private float _ViewXStart;
@@ -149,9 +154,12 @@ class PW_AlertMessage extends PopupWindow {
         PW_AlertMessage._CurrentVisible = alert;
         alert.getContentView().postDelayed(alert._FadeOutAfterTOT, AUTO_FADE_OUT_DELAY);
         MediaPlayer mp = MediaPlayer.create(activity, R.raw.notif_2);
-        mp.setOnCompletionListener(mp1 -> {
-            mp1.reset();
-            mp1.release();
+        mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+            @Override
+            public void onCompletion(MediaPlayer mp1) {
+                mp1.reset();
+                mp1.release();
+            }
         });
         mp.start();
     }

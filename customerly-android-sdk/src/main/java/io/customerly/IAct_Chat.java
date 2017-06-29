@@ -20,6 +20,7 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Activity;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.BitmapFactory;
@@ -55,8 +56,14 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
+
+import io.customerly.commons.LambdaUtil;
 
 /**
  * Created by Gianni on 03/09/16.
@@ -75,73 +82,104 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
     private long _TypingAccountId = TYPING_NO_ONE, _ConversationID = 0;
     @Nullable private LinearLayoutManager _LinearLayoutManager;
     @NonNull private ArrayList<IE_Message> _ChatList = new ArrayList<>(0);
-    @NonNull private final IU_ProgressiveScrollListener.OnBottomReachedListener _OnBottomReachedListener = (scrollListener) -> {
-        if(Customerly.get()._isConfigured()) {
-            long oldestMessageId = Long.MAX_VALUE;
-            for(int i = 0; i < this._ChatList.size(); i++) {
-                try {
-                    long currentMessageId = this._ChatList.get(i).conversation_message_id;
-                    if(currentMessageId < oldestMessageId) {
-                        oldestMessageId = currentMessageId;
-                    }
-                } catch (Exception ignored) { /* concurrence */ }
-            }
-
-            new IApi_Request.Builder<ArrayList<IE_Message>>(IApi_Request.ENDPOINT_MESSAGE_RETRIEVE)
-                    .opt_checkConn(this)
-                    .opt_onPreExecute(() -> IU_NullSafe.setVisibility(this._Progress_view, View.VISIBLE))
-                    .opt_converter(data -> IU_Utils.fromJSONdataToList(data, "messages", IE_Message::new))
-                    .opt_tokenMandatory()
-                    .opt_receiver((responseState, pNewMessages) -> {
-                        if (responseState == IApi_Request.RESPONSE_STATE__OK && pNewMessages != null) {
-
-                            final ArrayList<IE_Message> new_messages = new ArrayList<>(this._ChatList);
-                            int previoussize = new_messages.size();
-
-                            Collections.sort(pNewMessages, (m1, m2) -> (int) (m2.conversation_message_id - m1.conversation_message_id));//Sorting by conversation_message_id DESC);
-                            //noinspection Convert2streamapi
-                            for(IE_Message newMsg : pNewMessages) {
-                                if(! this._ChatList.contains(newMsg)) {           //Avoid duplicates;
-                                    new_messages.add(newMsg);
-                                }
-                            }
-                            int addeditem = new_messages.size() - previoussize;
-                            IU_NullSafe.post(this._ListRecyclerView, () -> {
-                                IU_NullSafe.setVisibility(this._Progress_view, View.GONE);
-                                IU_NullSafe.setVisibility(this._ListRecyclerView, View.VISIBLE);
-                                if(addeditem > 0) {
-                                    this._ChatList = new_messages;
-                                    boolean scrollToBottom = this._LinearLayoutManager != null && this._LinearLayoutManager.findFirstCompletelyVisibleItemPosition() == 0;
-                                    if (scrollToBottom) {
-                                        this._LinearLayoutManager.scrollToPosition(0);
-                                    }
-                                    if (previoussize != 0) {
-                                        this._Adapter.notifyItemChanged(previoussize - 1);
-                                    }
-                                    this._Adapter.notifyItemRangeInserted(previoussize, addeditem);
-                                }
-                            });
-
-                            if(new_messages.size() != 0) {
-                                IE_Message last = new_messages.get(0);
-                                if (last.isNotSeen()) {
-                                    this.sendSeen(last.conversation_message_id);
-                                }
-                            }
-
-                            if(scrollListener != null && pNewMessages.size() >= MESSAGES_PER_PAGE) {
-                                scrollListener.onFinishedUpdating();
-                            }
-                        } else {
-                            IU_NullSafe.setVisibility(this._Progress_view, View.GONE);
-                            Toast.makeText(getApplicationContext(), R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
+    @NonNull private final IU_ProgressiveScrollListener.OnBottomReachedListener _OnBottomReachedListener = new IU_ProgressiveScrollListener.OnBottomReachedListener() {
+        @Override
+        public void onReached(final IU_ProgressiveScrollListener scrollListener) {
+            if (Customerly.get()._isConfigured()) {
+                long oldestMessageId = Long.MAX_VALUE;
+                for (int i = 0; i < IAct_Chat.this._ChatList.size(); i++) {
+                    try {
+                        long currentMessageId = IAct_Chat.this._ChatList.get(i).conversation_message_id;
+                        if (currentMessageId < oldestMessageId) {
+                            oldestMessageId = currentMessageId;
                         }
-                    })
-                    .opt_trials(2)
-                    .param("conversation_id", this._ConversationID)
-                    .param("per_page", MESSAGES_PER_PAGE)
-                    .param("messages_before_id", oldestMessageId)
-                    .start();
+                    } catch (Exception ignored) { /* concurrence */ }
+                }
+
+                new IApi_Request.Builder<ArrayList<IE_Message>>(IApi_Request.ENDPOINT_MESSAGE_RETRIEVE)
+                        .opt_checkConn(IAct_Chat.this)
+                        .opt_onPreExecute(new Runnable() {
+                            @Override
+                            public void run() {
+                                IU_NullSafe.setVisibility(IAct_Chat.this._Progress_view, View.VISIBLE);
+                            }
+                        })
+                        .opt_converter(new IApi_Request.ResponseConverter<ArrayList<IE_Message>>() {
+                            @Nullable
+                            @Override
+                            public ArrayList<IE_Message> convert(@NonNull JSONObject data) throws JSONException {
+                                return IU_Utils.fromJSONdataToList(data, "messages", new IU_Utils.JSONObjectTo<IE_Message>() {
+                                    @NonNull
+                                    @Override
+                                    public IE_Message from(@NonNull JSONObject pMessageItem) throws JSONException {
+                                        return new IE_Message(pMessageItem);
+                                    }
+                                });
+                            }
+                        })
+                        .opt_tokenMandatory()
+                        .opt_receiver(new IApi_Request.ResponseReceiver<ArrayList<IE_Message>>() {
+                            @Override
+                            public void onResponse(@IApi_Request.ResponseState int responseState, @Nullable ArrayList<IE_Message> pNewMessages) {
+                                if (responseState == IApi_Request.RESPONSE_STATE__OK && pNewMessages != null) {
+
+                                    final ArrayList<IE_Message> new_messages = new ArrayList<>(IAct_Chat.this._ChatList);
+                                    final int previoussize = new_messages.size();
+
+                                    Collections.sort(pNewMessages, new Comparator<IE_Message>() {
+                                        @Override
+                                        public int compare(IE_Message m1, IE_Message m2) {
+                                            return (int) (m2.conversation_message_id - m1.conversation_message_id);
+                                        }
+                                    });//Sorting by conversation_message_id DESC);
+                                    //noinspection Convert2streamapi
+                                    for (IE_Message newMsg : pNewMessages) {
+                                        if (!IAct_Chat.this._ChatList.contains(newMsg)) {           //Avoid duplicates;
+                                            new_messages.add(newMsg);
+                                        }
+                                    }
+                                    final int addeditem = new_messages.size() - previoussize;
+                                    IU_NullSafe.post(IAct_Chat.this._ListRecyclerView, new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            IU_NullSafe.setVisibility(IAct_Chat.this._Progress_view, View.GONE);
+                                            IU_NullSafe.setVisibility(IAct_Chat.this._ListRecyclerView, View.VISIBLE);
+                                            if (addeditem > 0) {
+                                                IAct_Chat.this._ChatList = new_messages;
+                                                boolean scrollToBottom = IAct_Chat.this._LinearLayoutManager != null && IAct_Chat.this._LinearLayoutManager.findFirstCompletelyVisibleItemPosition() == 0;
+                                                if (scrollToBottom) {
+                                                    IAct_Chat.this._LinearLayoutManager.scrollToPosition(0);
+                                                }
+                                                if (previoussize != 0) {
+                                                    IAct_Chat.this._Adapter.notifyItemChanged(previoussize - 1);
+                                                }
+                                                IAct_Chat.this._Adapter.notifyItemRangeInserted(previoussize, addeditem);
+                                            }
+                                        }
+                                    });
+
+                                    if (new_messages.size() != 0) {
+                                        IE_Message last = new_messages.get(0);
+                                        if (last.isNotSeen()) {
+                                            IAct_Chat.this.sendSeen(last.conversation_message_id);
+                                        }
+                                    }
+
+                                    if (scrollListener != null && pNewMessages.size() >= MESSAGES_PER_PAGE) {
+                                        scrollListener.onFinishedUpdating();
+                                    }
+                                } else {
+                                    IU_NullSafe.setVisibility(IAct_Chat.this._Progress_view, View.GONE);
+                                    Toast.makeText(IAct_Chat.this.getApplicationContext(), R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
+                                }
+                            }
+                        })
+                        .opt_trials(2)
+                        .param("conversation_id", IAct_Chat.this._ConversationID)
+                        .param("per_page", MESSAGES_PER_PAGE)
+                        .param("messages_before_id", oldestMessageId)
+                        .start();
+            }
         }
     };
 
@@ -181,35 +219,41 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
                 }
             });
 
-            Customerly.get().__SOCKET__Typing_listener = (pConversationID, account_id, pTyping) -> {
-                if(pTyping) {
-                    if(this._TypingAccountId == account_id) {
-                        return;
-                    }
-                } else {
-                    if(this._TypingAccountId == TYPING_NO_ONE) {
-                        return;
-                    }
-                }
-                if (this._ConversationID == pConversationID) {
-                    this._ListRecyclerView.post(() -> {
-                        if (pTyping) {
-                            if(this._TypingAccountId == TYPING_NO_ONE) {
-                                this._TypingAccountId = account_id;
-                                boolean scrollToBottom = this._LinearLayoutManager != null && this._LinearLayoutManager.findFirstCompletelyVisibleItemPosition() == 0;
-                                this._Adapter.notifyItemInserted(0);
-                                if (scrollToBottom) {
-                                    this._LinearLayoutManager.scrollToPosition(0);
-                                }
-                            } else {
-                                this._TypingAccountId = account_id;
-                                this._Adapter.notifyItemChanged(0);
-                            }
-                        } else {
-                            this._TypingAccountId = TYPING_NO_ONE;
-                            this._Adapter.notifyItemRemoved(0);
+            Customerly.get().__SOCKET__Typing_listener = new Customerly.__SOCKET__ITyping_listener() {
+                @Override
+                public void onTypingEvent(long pConversationID, final long account_id, final boolean pTyping) {
+                    if (pTyping) {
+                        if (IAct_Chat.this._TypingAccountId == account_id) {
+                            return;
                         }
-                    });
+                    } else {
+                        if (IAct_Chat.this._TypingAccountId == TYPING_NO_ONE) {
+                            return;
+                        }
+                    }
+                    if (IAct_Chat.this._ConversationID == pConversationID && IAct_Chat.this._ListRecyclerView != null) {
+                        IAct_Chat.this._ListRecyclerView.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (pTyping) {
+                                    if (IAct_Chat.this._TypingAccountId == TYPING_NO_ONE) {
+                                        IAct_Chat.this._TypingAccountId = account_id;
+                                        boolean scrollToBottom = IAct_Chat.this._LinearLayoutManager != null && IAct_Chat.this._LinearLayoutManager.findFirstCompletelyVisibleItemPosition() == 0;
+                                        IAct_Chat.this._Adapter.notifyItemInserted(0);
+                                        if (scrollToBottom) {
+                                            IAct_Chat.this._LinearLayoutManager.scrollToPosition(0);
+                                        }
+                                    } else {
+                                        IAct_Chat.this._TypingAccountId = account_id;
+                                        IAct_Chat.this._Adapter.notifyItemChanged(0);
+                                    }
+                                } else {
+                                    IAct_Chat.this._TypingAccountId = TYPING_NO_ONE;
+                                    IAct_Chat.this._Adapter.notifyItemRemoved(0);
+                                }
+                            }
+                        });
+                    }
                 }
             };
         }
@@ -261,14 +305,22 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
             } catch (WindowManager.BadTokenException ignored) { }
         }
 
-        Collections.sort(new_messages, (m1, m2) -> (int) (m2.conversation_message_id - m1.conversation_message_id));//Sorting by conversation_message_id DESC
+        Collections.sort(new_messages, new Comparator<IE_Message>() {
+            @Override
+            public int compare(IE_Message m1, IE_Message m2) {
+                return (int) (m2.conversation_message_id - m1.conversation_message_id);
+            }
+        });//Sorting by conversation_message_id DESC
 
-        IU_NullSafe.post(this._ListRecyclerView, () -> {
-            boolean scrollToBottom = this._LinearLayoutManager != null && this._LinearLayoutManager.findFirstCompletelyVisibleItemPosition() == 0;
-            this._ChatList = new_messages;
-            this._Adapter.notifyDataSetChanged();
-            if (scrollToBottom) {
-                this._LinearLayoutManager.scrollToPosition(0);
+        IU_NullSafe.post(this._ListRecyclerView, new Runnable() {
+            @Override
+            public void run() {
+                boolean scrollToBottom = IAct_Chat.this._LinearLayoutManager != null && IAct_Chat.this._LinearLayoutManager.findFirstCompletelyVisibleItemPosition() == 0;
+                IAct_Chat.this._ChatList = new_messages;
+                IAct_Chat.this._Adapter.notifyDataSetChanged();
+                if (scrollToBottom) {
+                    IAct_Chat.this._LinearLayoutManager.scrollToPosition(0);
+                }
             }
         });
 
@@ -302,17 +354,25 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
     }
 
     private void sendSeen(final long messageID_seen) {
-        final IU_ResultUtils.OnNonNullResult<Long> onSuccess = utc -> {
-            utc /= 1000;
-            Customerly.get().__SOCKET_SEND_Seen(messageID_seen, utc);
-            new IApi_Request.Builder<Void>(IApi_Request.ENDPOINT_MESSAGE_SEEN)
-                    .opt_checkConn(this)
-                    .opt_tokenMandatory()
-                    .param("conversation_message_id", messageID_seen)
-                    .param("seen_date", utc)
-                    .start();
+        final IU_ResultUtils.OnNonNullResult<Long> onSuccess = new IU_ResultUtils.OnNonNullResult<Long>() {
+            @Override
+            public void onResult(@NonNull Long utc) {
+                utc /= 1000;
+                Customerly.get().__SOCKET_SEND_Seen(messageID_seen, utc);
+                new IApi_Request.Builder<Void>(IApi_Request.ENDPOINT_MESSAGE_SEEN)
+                        .opt_checkConn(IAct_Chat.this)
+                        .opt_tokenMandatory()
+                        .param("conversation_message_id", messageID_seen)
+                        .param("seen_date", utc)
+                        .start();
+            }
         };
-        IU_NTP_Utils.getSafeNow_fromUiThread(this, onSuccess, () -> onSuccess.onResult(System.currentTimeMillis()));
+        IU_NTP_Utils.getSafeNow_fromUiThread(this, onSuccess, new IU_ResultUtils.OnNoResult() {
+            @Override
+            public void onResult() {
+                onSuccess.onResult(System.currentTimeMillis());
+            }
+        });
     }
 
     @Override
@@ -326,43 +386,57 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
     protected void onInputActionSend_PerformSend(@NonNull String pMessage, @NonNull IE_Attachment[] pAttachments, @Nullable String ghostToVisitorEmail) {
         IE_JwtToken token = Customerly.get()._JwtToken;
         if(token != null && token._UserID != null) {
-            IE_Message message = new IE_Message(token._UserID, this._ConversationID, pMessage, pAttachments);
-            IU_NullSafe.post(this._ListRecyclerView, () -> {
-                message.setSending();
-                boolean scrollToBottom = this._LinearLayoutManager != null && this._LinearLayoutManager.findFirstCompletelyVisibleItemPosition() == 0;
-                this._ChatList.add(0, message);
-                this._Adapter.notifyItemInserted(this._TypingAccountId == TYPING_NO_ONE ? 0 : 1);
-                if (scrollToBottom) {
-                    this._LinearLayoutManager.scrollToPosition(0);
+            final IE_Message message = new IE_Message(token._UserID, this._ConversationID, pMessage, pAttachments);
+            IU_NullSafe.post(this._ListRecyclerView, new Runnable() {
+                @Override
+                public void run() {
+                    message.setSending();
+                    boolean scrollToBottom = IAct_Chat.this._LinearLayoutManager != null && IAct_Chat.this._LinearLayoutManager.findFirstCompletelyVisibleItemPosition() == 0;
+                    IAct_Chat.this._ChatList.add(0, message);
+                    IAct_Chat.this._Adapter.notifyItemInserted(IAct_Chat.this._TypingAccountId == TYPING_NO_ONE ? 0 : 1);
+                    if (scrollToBottom) {
+                        IAct_Chat.this._LinearLayoutManager.scrollToPosition(0);
+                    }
+                    IAct_Chat.this.startSendMessageRequest(message);
                 }
-                this.startSendMessageRequest(message);
             });
         }
     }
 
     @SuppressWarnings("deprecation")
     @TargetApi(Build.VERSION_CODES.N)
-    private void startSendMessageRequest(@NonNull IE_Message message) {
+    private void startSendMessageRequest(@NonNull final IE_Message message) {
         new IApi_Request.Builder<IE_Message>(IApi_Request.ENDPOINT_MESSAGE_SEND)
                 .opt_checkConn(this)
                 .opt_tokenMandatory()
-                .opt_converter(data -> {
-                    Customerly.get().__SOCKET_SEND_Message(data.optLong("timestamp", -1L));
-                    return new IE_Message(data.optJSONObject("message"));
+                .opt_converter(new IApi_Request.ResponseConverter<IE_Message>() {
+                    @Nullable
+                    @Override
+                    public IE_Message convert(@NonNull JSONObject data) throws JSONException {
+                        Customerly.get().__SOCKET_SEND_Message(data.optLong("timestamp", -1L));
+                        return new IE_Message(data.optJSONObject("message"));
+                    }
                 })
-                .opt_receiver((responseState, messageSent) ->
-                    IU_NullSafe.post(this._ListRecyclerView, () -> {
-                        int pos = this._ChatList.indexOf(message);
-                        if (pos != -1) {
-                            if(responseState == IApi_Request.RESPONSE_STATE__OK) {
-                                this._ChatList.set(pos, messageSent);
-                            } else {
-                                message.setFailed();
-                                Toast.makeText(getApplicationContext(), R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
+                .opt_receiver(new IApi_Request.ResponseReceiver<IE_Message>() {
+                    @Override
+                    public void onResponse(@IApi_Request.ResponseState final int responseState, @Nullable final IE_Message messageSent) {
+                        IU_NullSafe.post(IAct_Chat.this._ListRecyclerView, new Runnable() {
+                            @Override
+                            public void run() {
+                                int pos = IAct_Chat.this._ChatList.indexOf(message);
+                                if (pos != -1) {
+                                    if (responseState == IApi_Request.RESPONSE_STATE__OK) {
+                                        IAct_Chat.this._ChatList.set(pos, messageSent);
+                                    } else {
+                                        message.setFailed();
+                                        Toast.makeText(IAct_Chat.this.getApplicationContext(), R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
+                                    }
+                                    IAct_Chat.this._Adapter.notifyItemChanged(pos);
+                                }
                             }
-                            this._Adapter.notifyItemChanged(pos);
-                        }
-                    }))
+                        });
+                    }
+                })
                 .opt_trials(2)
                 .param("conversation_id", this._ConversationID)
                 .param("message", message.content == null ? "" : message.content)
@@ -393,8 +467,12 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
                 new AlertDialog.Builder(this)
                         .setTitle(R.string.io_customerly__permission_request)
                         .setMessage(R.string.io_customerly__permission_request_explanation_write)
-                        .setPositiveButton(android.R.string.ok, (dlg, which) ->
-                                ActivityCompat.requestPermissions(this, new String[]{ Manifest.permission.WRITE_EXTERNAL_STORAGE }, PERMISSION_REQUEST__WRITE_EXTERNAL_STORAGE))
+                        .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dlg, int which) {
+                                ActivityCompat.requestPermissions(IAct_Chat.this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, PERMISSION_REQUEST__WRITE_EXTERNAL_STORAGE);
+                            }
+                        })
                             .show();
             } else {
                 ActivityCompat.requestPermissions(this, new String[]{ Manifest.permission.WRITE_EXTERNAL_STORAGE }, PERMISSION_REQUEST__WRITE_EXTERNAL_STORAGE);
@@ -476,14 +554,24 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
         private void startAnimation() {
             this._Content.setText(".    ");
             this._Content.requestLayout();
-            this._Content.postDelayed(() -> {
-                this._Content.setText(". .  ");
-                this._Content.requestLayout();
-                this._Content.postDelayed(() -> {
-                    this._Content.setText(". . .");
-                    this._Content.requestLayout();
-                    this._Content.postDelayed(this::startAnimation, DOTS_SPEED);
-                }, DOTS_SPEED);
+            this._Content.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    ChatTypingVH.this._Content.setText(". .  ");
+                    ChatTypingVH.this._Content.requestLayout();
+                    ChatTypingVH.this._Content.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            ChatTypingVH.this._Content.setText(". . .");
+                            ChatTypingVH.this._Content.requestLayout();
+                            ChatTypingVH.this._Content.postDelayed(new Runnable() {
+                                @Override
+                                public void run() {
+                                    startAnimation();
+                                }}, DOTS_SPEED);
+                        }
+                    }, DOTS_SPEED);
+                }
             }, DOTS_SPEED);
         }
     }
@@ -519,11 +607,14 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
             super(R.layout.io_customerly__li_bubble_account_rich, R.drawable.io_customerly__ic_attach_account_40dp, -0.9f);
         }
         @Override
-        protected void apply(@Nullable IE_Message pMessage, @Nullable String pDateToDisplay, boolean pIsFirstMessageOfSender) {//, boolean pShouldAnimate) {
+        protected void apply(@Nullable final IE_Message pMessage, @Nullable String pDateToDisplay, boolean pIsFirstMessageOfSender) {//, boolean pShouldAnimate) {
             super.apply(pMessage, pDateToDisplay, pIsFirstMessageOfSender);//, pShouldAnimate);
-            View.OnClickListener clickListener = v -> {
-                if(pMessage != null && pMessage.rich_mail_link != null) {
-                    IU_Utils.intentUrl(IAct_Chat.this, pMessage.rich_mail_link);
+            View.OnClickListener clickListener = new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    if (pMessage != null && pMessage.rich_mail_link != null) {
+                        IU_Utils.intentUrl(IAct_Chat.this, pMessage.rich_mail_link);
+                    }
                 }
             };
             this.itemView.setOnClickListener(clickListener);
@@ -548,7 +639,7 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
             this._IcAttachResID = pIcAttachResID;
 //            this._ItemFromXValueRelative = pItemFromXValueRelative;
         }
-        @Override protected void apply(@Nullable IE_Message pMessage, @Nullable String pDateToDisplay, boolean pIsFirstMessageOfSender) {//, boolean pShouldAnimate) {
+        @Override protected void apply(@Nullable final IE_Message pMessage, @Nullable String pDateToDisplay, boolean pIsFirstMessageOfSender) {//, boolean pShouldAnimate) {
             if (pMessage != null) {//Always != null for this ViewHolder
                 if(pDateToDisplay != null) {
                     this._Date.setText(pDateToDisplay);
@@ -573,8 +664,13 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
 
                 if(pMessage.content != null && pMessage.content.length() != 0) {
                     this._Content.setText(pMessage.getContentSpanned(this._Content,
-                        (activity, imageUrl) -> startActivity(new Intent(IAct_Chat.this, IAct_FullScreenImage.class)
-                            .putExtra(IAct_FullScreenImage.EXTRA_IMAGE_SOURCE, imageUrl))));
+                            new LambdaUtil.V__NN_NN<Activity, String>() {
+                                @Override
+                                public void lambda(@NonNull Activity activity, @NonNull String imageUrl) {
+                                    IAct_Chat.this.startActivity(new Intent(IAct_Chat.this, IAct_FullScreenImage.class)
+                                            .putExtra(IAct_FullScreenImage.EXTRA_IMAGE_SOURCE, imageUrl));
+                                }
+                            }));
                     this._Content.setVisibility(View.VISIBLE);
                 } else {
                     this.onEmptyContent();
@@ -587,14 +683,17 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
                 if (pMessage.isFailed()) {
                     this._Content.setCompoundDrawablesWithIntrinsicBounds(0, 0, R.drawable.io_customerly__ic_error, 0);
                     this._Content.setVisibility(View.VISIBLE);
-                    View.OnClickListener clickListener = v -> {
-                        if(Customerly.get()._isConfigured()) {
-                            pMessage.setSending();
-                            int pos = _ChatList.indexOf(pMessage);
-                            if (pos != -1) {
-                                _Adapter.notifyItemChanged(pos);
+                    View.OnClickListener clickListener = new View.OnClickListener() {
+                        @Override
+                        public void onClick(View v) {
+                            if (Customerly.get()._isConfigured()) {
+                                pMessage.setSending();
+                                int pos = _ChatList.indexOf(pMessage);
+                                if (pos != -1) {
+                                    _Adapter.notifyItemChanged(pos);
+                                }
+                                startSendMessageRequest(pMessage);
                             }
-                            startSendMessageRequest(pMessage);
                         }
                     };
                     this._Content.setOnClickListener(clickListener);
@@ -608,7 +707,7 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
                 this._AttachmentLayout.removeAllViews();
                 IE_Attachment[] attachments = pMessage._Attachments;
                 if (attachments != null) {
-                    for (IE_Attachment attachment : attachments) {
+                    for (final IE_Attachment attachment : attachments) {
 
                         LinearLayout ll = new LinearLayout(IAct_Chat.this);
                         ll.setLayoutParams(new RecyclerView.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -626,8 +725,13 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
                                         .load(attachment.path)
                                         .into(IAct_Chat.this, iv)
                                         .placeholder(R.drawable.io_customerly__pic_placeholder));
-                                ll.setOnClickListener(layout -> startActivity(new Intent(IAct_Chat.this, IAct_FullScreenImage.class)
-                                        .putExtra(IAct_FullScreenImage.EXTRA_IMAGE_SOURCE, attachment.path)));
+                                ll.setOnClickListener(new View.OnClickListener() {
+                                    @Override
+                                    public void onClick(View layout) {
+                                        IAct_Chat.this.startActivity(new Intent(IAct_Chat.this, IAct_FullScreenImage.class)
+                                                .putExtra(IAct_FullScreenImage.EXTRA_IMAGE_SOURCE, attachment.path));
+                                    }
+                                });
                             } else {
                                 try {
                                     String base64 = attachment.loadBase64FromMemory(IAct_Chat.this);
@@ -652,13 +756,23 @@ public final class IAct_Chat extends IAct_AInput implements Customerly.SDKActivi
                             iv.setImageResource(this._IcAttachResID);
 
                             if (attachment.path != null && attachment.path.length() != 0) {
-                                ll.setOnClickListener(layout -> new AlertDialog.Builder(IAct_Chat.this)
-                                        .setTitle(R.string.io_customerly__download)
-                                        .setMessage(R.string.io_customerly__download_the_file_)
-                                        .setPositiveButton(android.R.string.ok, (dlg, which) -> IAct_Chat.this.startAttachmentDownload(attachment.name, attachment.path))
-                                        .setNegativeButton(android.R.string.cancel, null)
-                                        .setCancelable(true)
-                                        .show());
+                                ll.setOnClickListener(new View.OnClickListener() {
+                                    @Override
+                                    public void onClick(View layout) {
+                                        new AlertDialog.Builder(IAct_Chat.this)
+                                                .setTitle(R.string.io_customerly__download)
+                                                .setMessage(R.string.io_customerly__download_the_file_)
+                                                .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+                                                    @Override
+                                                    public void onClick(DialogInterface dlg, int which) {
+                                                        IAct_Chat.this.startAttachmentDownload(attachment.name, attachment.path);
+                                                    }
+                                                })
+                                                .setNegativeButton(android.R.string.cancel, null)
+                                                .setCancelable(true)
+                                                .show();
+                                    }
+                                });
                             }
                         }
                         ll.addView(iv);

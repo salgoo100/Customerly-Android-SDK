@@ -17,6 +17,7 @@ package io.customerly;
  */
 
 import android.content.Context;
+import android.content.DialogInterface;
 import android.graphics.Typeface;
 import android.net.Uri;
 import android.support.annotation.NonNull;
@@ -24,6 +25,7 @@ import android.support.annotation.Nullable;
 import android.support.v7.app.AlertDialog;
 import android.text.TextUtils;
 import android.util.Base64;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -65,9 +67,9 @@ class IE_Attachment {
         this.path = null;
     }
 
-    void addAttachmentToInput(@NonNull IAct_AInput pA_Customerly_Activity) {
+    void addAttachmentToInput(@NonNull final IAct_AInput pA_Customerly_Activity) {
         pA_Customerly_Activity._Attachments.add(this);
-        TextView tv = new TextView(pA_Customerly_Activity);
+        final TextView tv = new TextView(pA_Customerly_Activity);
         tv.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
         tv.setCompoundDrawablesWithIntrinsicBounds(R.drawable.io_customerly__ld_chat_attachment, 0, 0, 0);
         int _5dp = IU_Utils.px(5);
@@ -79,19 +81,27 @@ class IE_Attachment {
         tv.setEllipsize(TextUtils.TruncateAt.MIDDLE);
         tv.setTypeface(Typeface.SANS_SERIF, Typeface.NORMAL);
         tv.setText(this.name);
-        tv.setOnClickListener(textView -> new AlertDialog.Builder(pA_Customerly_Activity)
-                .setTitle(R.string.io_customerly__choose_a_file_to_attach)
-                .setMessage(pA_Customerly_Activity.getString(R.string.io_customerly__cancel_attachment, tv.getText()))
-                .setNegativeButton(R.string.io_customerly__cancel, null)
-                .setPositiveButton(R.string.io_customerly__remove, (dlg, which) -> {
-                    ViewGroup vg = (ViewGroup)tv.getParent();
-                    if(vg != null) {
-                        vg.removeView(tv);
-                    }
-                    pA_Customerly_Activity._Attachments.remove(this);
-                })
-                .setCancelable(true)
-                .show());
+        tv.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View textView) {
+                new AlertDialog.Builder(pA_Customerly_Activity)
+                        .setTitle(R.string.io_customerly__choose_a_file_to_attach)
+                        .setMessage(pA_Customerly_Activity.getString(R.string.io_customerly__cancel_attachment, tv.getText()))
+                        .setNegativeButton(R.string.io_customerly__cancel, null)
+                        .setPositiveButton(R.string.io_customerly__remove, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dlg, int which) {
+                                ViewGroup vg = (ViewGroup) tv.getParent();
+                                if (vg != null) {
+                                    vg.removeView(tv);
+                                }
+                                pA_Customerly_Activity._Attachments.remove(IE_Attachment.this);
+                            }
+                        })
+                        .setCancelable(true)
+                        .show();
+            }
+        });
         pA_Customerly_Activity.input_attachments.addView(tv);
     }
 

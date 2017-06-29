@@ -35,7 +35,7 @@ class IU_NTP_Utils {
         IU_NTP_Utils.internal_getSafeNow_fromUiThread(context, null, onNetworkTimeNotNull, onNetworkError);
     }
     @Contract("_, null, null, _ -> fail; _, null, !null, null -> fail")
-    private static void internal_getSafeNow_fromUiThread(@Nullable Context context, @Nullable IU_ResultUtils.OnResult<Long> onNetworkTime, @Nullable IU_ResultUtils.OnNonNullResult<Long> onNetworkTimeNotNull, @Nullable IU_ResultUtils.OnNoResult onNetworkError) {
+    private static void internal_getSafeNow_fromUiThread(@Nullable Context context, @Nullable final IU_ResultUtils.OnResult<Long> onNetworkTime, @Nullable final IU_ResultUtils.OnNonNullResult<Long> onNetworkTimeNotNull, @Nullable final IU_ResultUtils.OnNoResult onNetworkError) {
         if(onNetworkTime == null && (onNetworkTimeNotNull == null || onNetworkError == null))
             throw new IllegalStateException("You have to specify a ResultUtils.OnResult or both ResultUtils.OnNonNullResult and ResultUtils.OnNoResult");
         if(context != null && ! IU_Utils.checkConnection(context)) {

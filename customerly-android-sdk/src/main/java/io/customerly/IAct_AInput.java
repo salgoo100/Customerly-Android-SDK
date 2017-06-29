@@ -21,6 +21,7 @@ import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
@@ -68,14 +69,17 @@ abstract class IAct_AInput extends AppCompatActivity {
     LinearLayout input_layout, input_attachments;
     EditText input_input;
     final ArrayList<IE_Attachment> _Attachments = new ArrayList<>(1);
-    @NonNull private final IntentFilter _IntentFilter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
-    @NonNull private final BroadcastReceiver _BroadcastReceiver = new BroadcastReceiver() {
+    @NonNull
+    private final IntentFilter _IntentFilter = new IntentFilter(ConnectivityManager.CONNECTIVITY_ACTION);
+    @NonNull
+    private final BroadcastReceiver _BroadcastReceiver = new BroadcastReceiver() {
         boolean attendingReconnection = false;
+
         @Override
         public void onReceive(Context context, Intent intent) {
             boolean connected = IU_Utils.checkConnection(context);
-            if(connected) {
-                if(this.attendingReconnection) {
+            if (connected) {
+                if (this.attendingReconnection) {
                     this.attendingReconnection = false;
                     onReconnection();
                 }
@@ -102,11 +106,12 @@ abstract class IAct_AInput extends AppCompatActivity {
     /**
      * Initialize the layout ( must contain layout_powered_by and layout_input_layout )</br>
      * It colors the actionbar, the status bar and initializes the listeners of the input
+     *
      * @param pLayoutRes The layout resID
      * @return true if the SDK is configured or false otherwise anc finish is called
      */
     final boolean onCreateLayout(@LayoutRes int pLayoutRes) {
-        if(Customerly.get()._isConfigured()) {
+        if (Customerly.get()._isConfigured()) {
             super.setContentView(pLayoutRes);
             //View binding
             final ActionBar actionBar = this.getSupportActionBar();
@@ -120,7 +125,7 @@ abstract class IAct_AInput extends AppCompatActivity {
             if (actionBar != null) {
 
                 String title;
-                if(Customerly.get().__PING__LAST_widget_color != 0) {
+                if (Customerly.get().__PING__LAST_widget_color != 0) {
                     actionBar.setBackgroundDrawable(new ColorDrawable(Customerly.get().__PING__LAST_widget_color));
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                         this.getWindow().setStatusBarColor(IU_Utils.alterColor(Customerly.get().__PING__LAST_widget_color, 0.8f));
@@ -149,32 +154,40 @@ abstract class IAct_AInput extends AppCompatActivity {
                 redBoldSpannable.setSpan(new ForegroundColorSpan(IU_Utils.getColorFromResource(this.getResources(), R.color.io_customerly__blue_malibu)), 0, redBoldSpannable.length(), Spannable.SPAN_INCLUSIVE_INCLUSIVE);
                 redBoldSpannable.setSpan(new StyleSpan(Typeface.BOLD), 0, redBoldSpannable.length(), Spannable.SPAN_INCLUSIVE_INCLUSIVE);
                 powered_by.setText(new SpannableStringBuilder(this.getString(R.string.io_customerly__powered_by_)).append(redBoldSpannable));
-                powered_by.setOnClickListener(v -> IU_Utils.intentUrl(this, BuildConfig.CUSTOMERLY_WEB_SITE));
+                powered_by.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        IU_Utils.intentUrl(IAct_AInput.this, BuildConfig.CUSTOMERLY_WEB_SITE);
+                    }
+                });
                 powered_by.setVisibility(View.VISIBLE);
-            }else {
+            } else {
                 powered_by.setVisibility(View.GONE);
             }
 
             input_button_attach.setOnClickListener(this._AttachButtonListener);
 
-            this.findViewById(R.id.io_customerly__input_button_send).setOnClickListener(btn -> {
-                if(IU_Utils.checkConnection(this)) {
-                    String message = this.input_input.getText().toString().trim();
-                    IE_Attachment[] attachmentsArray = this._Attachments.toArray(new IE_Attachment[this._Attachments.size()]);
-                    if(message.length() != 0 || attachmentsArray.length != 0) {
-                        this.input_input.setText(null);
-                        this._Attachments.clear();
-                        this.input_attachments.removeAllViews();
-                        this.onInputActionSend_PerformSend(message, attachmentsArray, null);
+            this.findViewById(R.id.io_customerly__input_button_send).setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View btn) {
+                    if (IU_Utils.checkConnection(IAct_AInput.this)) {
+                        String message = IAct_AInput.this.input_input.getText().toString().trim();
+                        IE_Attachment[] attachmentsArray = IAct_AInput.this._Attachments.toArray(new IE_Attachment[IAct_AInput.this._Attachments.size()]);
+                        if (message.length() != 0 || attachmentsArray.length != 0) {
+                            IAct_AInput.this.input_input.setText(null);
+                            IAct_AInput.this._Attachments.clear();
+                            IAct_AInput.this.input_attachments.removeAllViews();
+                            IAct_AInput.this.onInputActionSend_PerformSend(message, attachmentsArray, null);
+                        }
+                    } else {
+                        Toast.makeText(IAct_AInput.this.getApplicationContext(), R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
                     }
-                } else {
-                    Toast.makeText(this.getApplicationContext(), R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
                 }
             });
 
             String themeUrl = Customerly.get().__PING__LAST_widget_background_url;
-            if(themeUrl != null) {
-                ImageView themeIV = (ImageView)this.findViewById(R.id.io_customerly__background_theme);
+            if (themeUrl != null) {
+                ImageView themeIV = (ImageView) this.findViewById(R.id.io_customerly__background_theme);
                 Customerly.get()._RemoteImageHandler.request(new IU_RemoteImageHandler.Request()
                         .centerCrop()
                         .load(themeUrl)
@@ -190,44 +203,59 @@ abstract class IAct_AInput extends AppCompatActivity {
         }
     }
 
-    @NonNull private final View.OnClickListener _AttachButtonListener = btn -> {
-        if (this._Attachments.size() >= 10) {
-            Snackbar.make(btn, R.string.io_customerly__attachments_max_count_error, Snackbar.LENGTH_INDEFINITE)
-                    .setAction(android.R.string.ok, v -> {}).setActionTextColor(Customerly.get().__PING__LAST_widget_color).show();
-        } else {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN //Manifest.permission.READ_EXTERNAL_STORAGE has been added in api
-            || ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
-                try {
-                    this.startActivityForResult(
-                            Intent.createChooser(new Intent(Intent.ACTION_GET_CONTENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE),
-                                    this.getString(R.string.io_customerly__choose_a_file_to_attach)), FILE_SELECT_CODE);
-                } catch (ActivityNotFoundException ex) {
-                    Toast.makeText(this, this.getString(R.string.io_customerly__install_a_file_manager), Toast.LENGTH_SHORT).show();
-                }
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-                if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.READ_EXTERNAL_STORAGE)) {
-                    new AlertDialog.Builder(this)
-                            .setTitle(R.string.io_customerly__permission_request)
-                            .setMessage(R.string.io_customerly__permission_request_explanation_read)
-                            .setPositiveButton(android.R.string.ok, (dlg, which) ->
-                                    ActivityCompat.requestPermissions(this, new String[]{ Manifest.permission.READ_EXTERNAL_STORAGE }, PERMISSION_REQUEST__READ_EXTERNAL_STORAGE))
-                            .show();
-                } else {
-                    ActivityCompat.requestPermissions(this, new String[]{ Manifest.permission.READ_EXTERNAL_STORAGE }, PERMISSION_REQUEST__READ_EXTERNAL_STORAGE);
+    @NonNull
+    private final View.OnClickListener _AttachButtonListener = new View.OnClickListener() {
+        @Override
+        public void onClick(View btn) {
+            if (IAct_AInput.this._Attachments.size() >= 10) {
+                Snackbar.make(btn, R.string.io_customerly__attachments_max_count_error, Snackbar.LENGTH_INDEFINITE)
+                        .setAction(android.R.string.ok, new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+                            }
+                        }).setActionTextColor(Customerly.get().__PING__LAST_widget_color).show();
+            } else {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN //Manifest.permission.READ_EXTERNAL_STORAGE has been added in api
+                        || ContextCompat.checkSelfPermission(IAct_AInput.this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
+                    try {
+                        IAct_AInput.this.startActivityForResult(
+                                Intent.createChooser(new Intent(Intent.ACTION_GET_CONTENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE),
+                                        IAct_AInput.this.getString(R.string.io_customerly__choose_a_file_to_attach)), FILE_SELECT_CODE);
+                    } catch (ActivityNotFoundException ex) {
+                        Toast.makeText(IAct_AInput.this, IAct_AInput.this.getString(R.string.io_customerly__install_a_file_manager), Toast.LENGTH_SHORT).show();
+                    }
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+                    if (ActivityCompat.shouldShowRequestPermissionRationale(IAct_AInput.this, Manifest.permission.READ_EXTERNAL_STORAGE)) {
+                        new AlertDialog.Builder(IAct_AInput.this)
+                                .setTitle(R.string.io_customerly__permission_request)
+                                .setMessage(R.string.io_customerly__permission_request_explanation_read)
+                                .setPositiveButton(android.R.string.ok, new AlertDialog.OnClickListener() {
+                                    @Override
+                                    public void onClick(DialogInterface dlg, int which) {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+                                            ActivityCompat.requestPermissions(IAct_AInput.this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, PERMISSION_REQUEST__READ_EXTERNAL_STORAGE);
+                                        }
+                                    }
+                                })
+                                .show();
+                    } else {
+                        ActivityCompat.requestPermissions(IAct_AInput.this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, PERMISSION_REQUEST__READ_EXTERNAL_STORAGE);
+                    }
                 }
             }
         }
     };
 
     private static final int PERMISSION_REQUEST__READ_EXTERNAL_STORAGE = 1234;
+
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String permissions[], @NonNull int[] grantResults) {
         switch (requestCode) {
             case PERMISSION_REQUEST__READ_EXTERNAL_STORAGE: {
                 int length = Math.min(grantResults.length, permissions.length);
                 if (length > 0) {
-                    for(int i = 0; i < length; i++) {
-                        if(Manifest.permission.READ_EXTERNAL_STORAGE.equals(permissions[i])
+                    for (int i = 0; i < length; i++) {
+                        if (Manifest.permission.READ_EXTERNAL_STORAGE.equals(permissions[i])
                                 && grantResults[i] == PackageManager.PERMISSION_GRANTED) {
                             this._AttachButtonListener.onClick(null);
                             return;
@@ -243,7 +271,7 @@ abstract class IAct_AInput extends AppCompatActivity {
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        switch(item.getItemId()) {
+        switch (item.getItemId()) {
             case android.R.id.home:
                 this.finish();
                 return true;
@@ -258,19 +286,27 @@ abstract class IAct_AInput extends AppCompatActivity {
             case FILE_SELECT_CODE:
                 if (resultCode == RESULT_OK) {
                     Uri fileUri = data.getData();
-                    if(fileUri != null) {
+                    if (fileUri != null) {
                         try {
-                            for(IE_Attachment att : this._Attachments) {
-                                if(fileUri.equals(att.uri)) {
+                            for (IE_Attachment att : this._Attachments) {
+                                if (fileUri.equals(att.uri)) {
                                     Snackbar.make(this.input_input, R.string.io_customerly__attachments_already_attached_error, Snackbar.LENGTH_INDEFINITE)
-                                            .setAction(android.R.string.ok, v -> { }).setActionTextColor(Customerly.get().__PING__LAST_widget_color).show();
+                                            .setAction(android.R.string.ok, new View.OnClickListener() {
+                                                @Override
+                                                public void onClick(View v) {
+                                                }
+                                            }).setActionTextColor(Customerly.get().__PING__LAST_widget_color).show();
                                     this.input_input.requestFocus();
                                     return;
                                 }
                             }
-                            if(IU_Utils.getFileSizeFromUri(this, fileUri) > 5000000) {
+                            if (IU_Utils.getFileSizeFromUri(this, fileUri) > 5000000) {
                                 Snackbar.make(this.input_input, R.string.io_customerly__attachments_max_size_error, Snackbar.LENGTH_INDEFINITE)
-                                        .setAction(android.R.string.ok, v -> { }).setActionTextColor(Customerly.get().__PING__LAST_widget_color).show();
+                                        .setAction(android.R.string.ok, new View.OnClickListener() {
+                                            @Override
+                                            public void onClick(View v) {
+                                            }
+                                        }).setActionTextColor(Customerly.get().__PING__LAST_widget_color).show();
                                 this.input_input.requestFocus();
                                 return;
                             }
@@ -288,10 +324,10 @@ abstract class IAct_AInput extends AppCompatActivity {
     }
 
     void restoreAttachments() {
-        if(this.input_attachments != null) {
+        if (this.input_attachments != null) {
             this.input_attachments.removeAllViews();
         }
-        if(this._Attachments.size() != 0) {
+        if (this._Attachments.size() != 0) {
             this._Attachments.clear();
         }
     }

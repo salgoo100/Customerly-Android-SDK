@@ -43,9 +43,13 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.RatingBar;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import static io.customerly.IE_Survey.TYPE_END_SURVEY;
 
@@ -101,48 +105,66 @@ public class IDlgF_Survey extends DialogFragment {
                 this._SurveyContainer = (LinearLayout) view.findViewById(R.id.io_customerly__input_layout);
                 this._ProgressView = view.findViewById(R.id.io_customerly__progress_view);
                 this._Back = view.findViewById(R.id.io_customerly__back);
-                this._Back.setOnClickListener(v -> {
-                    IE_Survey currentSurvey = this._CurrentSurvey;
-                    if (currentSurvey != null && this._Back.getVisibility() == View.VISIBLE && this._ProgressView.getVisibility() == View.GONE) {
-                        this._SurveyContainer.removeAllViews();
-                        new IApi_Request.Builder<IE_Survey>(IApi_Request.ENDPOINT_SURVEY_BACK)
-                                .opt_checkConn(this.getActivity())
-                                .opt_tokenMandatory()
-                                .opt_trials(2)
-                                .opt_onPreExecute(() -> {
-                                    this._ProgressView.getLayoutParams().height = this._Title.getHeight() + this._Subtitle.getHeight() + this._SurveyContainer.getHeight();
-                                    this._Title.setVisibility(View.GONE);
-                                    this._Subtitle.setVisibility(View.GONE);
-                                    this._SurveyContainer.removeAllViews();
-                                    this._ProgressView.setVisibility(View.VISIBLE);
-                                })
-                                .opt_converter(IE_Survey::from)
-                                .opt_receiver((responseState, surveyBack) -> {
-                                    if (responseState != IApi_Request.RESPONSE_STATE__OK) {
-                                        Context context = this.getActivity();
-                                        context = context != null ? context.getApplicationContext() : null;
-                                        Toast.makeText(context, R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
-                                    }
-                                    this._ProgressView.setVisibility(View.GONE);
-                                    this.applySurvey(surveyBack);
-                                })
-                                .param("survey_id", currentSurvey.survey_id)
-                                .start();
-                    }
-                });
-                view.findViewById(R.id.io_customerly__close).setOnClickListener(v -> {
-                    if (this._ProgressView.getVisibility() == View.GONE) {
-                        IE_Survey currentSurvey = this._CurrentSurvey;
-                        if (!this._SurveyCompleted && currentSurvey != null) {
-                            currentSurvey.isRejectedOrConcluded = true;
-                            new IApi_Request.Builder<IE_Survey>(IApi_Request.ENDPOINT_SURVEY_REJECT)
-                                    .opt_checkConn(this.getActivity())
+                this._Back.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        IE_Survey currentSurvey = IDlgF_Survey.this._CurrentSurvey;
+                        if (currentSurvey != null && IDlgF_Survey.this._Back.getVisibility() == View.VISIBLE && IDlgF_Survey.this._ProgressView.getVisibility() == View.GONE) {
+                            IDlgF_Survey.this._SurveyContainer.removeAllViews();
+                            new IApi_Request.Builder<IE_Survey>(IApi_Request.ENDPOINT_SURVEY_BACK)
+                                    .opt_checkConn(IDlgF_Survey.this.getActivity())
                                     .opt_tokenMandatory()
                                     .opt_trials(2)
+                                    .opt_onPreExecute(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            IDlgF_Survey.this._ProgressView.getLayoutParams().height = IDlgF_Survey.this._Title.getHeight() + IDlgF_Survey.this._Subtitle.getHeight() + IDlgF_Survey.this._SurveyContainer.getHeight();
+                                            IDlgF_Survey.this._Title.setVisibility(View.GONE);
+                                            IDlgF_Survey.this._Subtitle.setVisibility(View.GONE);
+                                            IDlgF_Survey.this._SurveyContainer.removeAllViews();
+                                            IDlgF_Survey.this._ProgressView.setVisibility(View.VISIBLE);
+                                        }
+                                    })
+                                    .opt_converter(new IApi_Request.ResponseConverter<IE_Survey>() {
+                                        @Nullable
+                                        @Override
+                                        public IE_Survey convert(@NonNull JSONObject root) throws JSONException {
+                                            return IE_Survey.from(root);
+                                        }
+                                    })
+                                    .opt_receiver(new IApi_Request.ResponseReceiver<IE_Survey>() {
+                                        @Override
+                                        public void onResponse(@IApi_Request.ResponseState int responseState, @Nullable IE_Survey surveyBack) {
+                                            if (responseState != IApi_Request.RESPONSE_STATE__OK) {
+                                                Context context = IDlgF_Survey.this.getActivity();
+                                                context = context != null ? context.getApplicationContext() : null;
+                                                Toast.makeText(context, R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
+                                            }
+                                            IDlgF_Survey.this._ProgressView.setVisibility(View.GONE);
+                                            IDlgF_Survey.this.applySurvey(surveyBack);
+                                        }
+                                    })
                                     .param("survey_id", currentSurvey.survey_id)
                                     .start();
                         }
-                        this.dismissAllowingStateLoss();
+                    }
+                });
+                view.findViewById(R.id.io_customerly__close).setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        if (IDlgF_Survey.this._ProgressView.getVisibility() == View.GONE) {
+                            IE_Survey currentSurvey = IDlgF_Survey.this._CurrentSurvey;
+                            if (!IDlgF_Survey.this._SurveyCompleted && currentSurvey != null) {
+                                currentSurvey.isRejectedOrConcluded = true;
+                                new IApi_Request.Builder<IE_Survey>(IApi_Request.ENDPOINT_SURVEY_REJECT)
+                                        .opt_checkConn(IDlgF_Survey.this.getActivity())
+                                        .opt_tokenMandatory()
+                                        .opt_trials(2)
+                                        .param("survey_id", currentSurvey.survey_id)
+                                        .start();
+                            }
+                            IDlgF_Survey.this.dismissAllowingStateLoss();
+                        }
                     }
                 });
 
@@ -156,7 +178,7 @@ public class IDlgF_Survey extends DialogFragment {
         return null;
     }
 
-    private void applySurvey(@Nullable IE_Survey survey) {
+    private void applySurvey(@Nullable final IE_Survey survey) {
         Context context = this.getActivity();
         if (survey == null || context == null) {
             this.dismissAllowingStateLoss();
@@ -187,7 +209,7 @@ public class IDlgF_Survey extends DialogFragment {
             switch (survey.type) {
                 case IE_Survey.TYPE_BUTTON:
                     if (survey.choices != null) {
-                        for (IE_Survey.Choice c : survey.choices) {
+                        for (final IE_Survey.Choice c : survey.choices) {
                             Button b = new Button(context);
                             {
                                 b.setTextColor(Color.WHITE);
@@ -199,7 +221,12 @@ public class IDlgF_Survey extends DialogFragment {
                                 LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, IU_Utils.px(40));
                                 lp.bottomMargin = lp.topMargin = IU_Utils.px(5);
                                 b.setLayoutParams(lp);
-                                b.setOnClickListener(v -> this.nextSurvey(survey, c.survey_choice_id, null));
+                                b.setOnClickListener(new View.OnClickListener() {
+                                    @Override
+                                    public void onClick(View v) {
+                                        IDlgF_Survey.this.nextSurvey(survey, c.survey_choice_id, null);
+                                    }
+                                });
                             }
                             this._SurveyContainer.addView(b);
                         }
@@ -208,12 +235,17 @@ public class IDlgF_Survey extends DialogFragment {
                 case IE_Survey.TYPE_RADIO:
                     if (survey.choices != null) {
                         LayoutInflater inflater = LayoutInflater.from(context);
-                        for (IE_Survey.Choice c : survey.choices) {
+                        for (final IE_Survey.Choice c : survey.choices) {
 
                             AppCompatRadioButton radio = (AppCompatRadioButton) inflater.inflate(R.layout.io_customerly__surveyitem_radio, this._SurveyContainer, false);
                             {
                                 radio.setText(c.value);
-                                radio.setOnClickListener(v -> this.nextSurvey(survey, c.survey_choice_id, null));
+                                radio.setOnClickListener(new View.OnClickListener() {
+                                    @Override
+                                    public void onClick(View v) {
+                                        IDlgF_Survey.this.nextSurvey(survey, c.survey_choice_id, null);
+                                    }
+                                });
                             }
                             this._SurveyContainer.addView(radio);
                         }
@@ -308,7 +340,7 @@ public class IDlgF_Survey extends DialogFragment {
                     ll_root.setOrientation(LinearLayout.VERTICAL);
                     ll_root.setGravity(Gravity.CENTER_HORIZONTAL);
 
-                    Button confirm = new Button(context);
+                    final Button confirm = new Button(context);
 
                     LinearLayout ll_seek = new LinearLayout(context);
                     {
@@ -376,7 +408,12 @@ public class IDlgF_Survey extends DialogFragment {
                         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(IU_Utils.px(160), IU_Utils.px(40));
                         lp.bottomMargin = lp.topMargin = IU_Utils.px(5);
                         confirm.setLayoutParams(lp);
-                        confirm.setOnClickListener(v -> this.nextSurvey(survey, -1, String.valueOf(confirm.getTag())));
+                        confirm.setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+                                IDlgF_Survey.this.nextSurvey(survey, -1, String.valueOf(confirm.getTag()));
+                            }
+                        });
                     }
                     ll_root.addView(confirm);
                 }
@@ -385,7 +422,12 @@ public class IDlgF_Survey extends DialogFragment {
                 case IE_Survey.TYPE_STAR:
                     AppCompatRatingBar ratingBar = (AppCompatRatingBar) LayoutInflater.from(context).inflate(R.layout.io_customerly__surveyitem_ratingbar, this._SurveyContainer, false);
                 {
-                    ratingBar.setOnRatingBarChangeListener((rBar, rating, fromUser) -> this.nextSurvey(survey, -1, String.valueOf(rating)));
+                    ratingBar.setOnRatingBarChangeListener(new RatingBar.OnRatingBarChangeListener() {
+                        @Override
+                        public void onRatingChanged(RatingBar rBar, float rating, boolean fromUser) {
+                            IDlgF_Survey.this.nextSurvey(survey, -1, String.valueOf(rating));
+                        }
+                    });
                 }
                 this._SurveyContainer.addView(ratingBar);
                 break;
@@ -398,7 +440,7 @@ public class IDlgF_Survey extends DialogFragment {
                     ll.setOrientation(LinearLayout.VERTICAL);
                     ll.setGravity(Gravity.CENTER_HORIZONTAL);
 
-                    AppCompatEditText editText = (AppCompatEditText) LayoutInflater.from(context).inflate(R.layout.io_customerly__surveyitem_edittext, ll, false);
+                    final AppCompatEditText editText = (AppCompatEditText) LayoutInflater.from(context).inflate(R.layout.io_customerly__surveyitem_edittext, ll, false);
                     {
                         switch (survey.type) {
                             case IE_Survey.TYPE_NUMBER:
@@ -438,9 +480,12 @@ public class IDlgF_Survey extends DialogFragment {
                         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(IU_Utils.px(160), IU_Utils.px(40));
                         lp.bottomMargin = lp.topMargin = IU_Utils.px(5);
                         confirm.setLayoutParams(lp);
-                        confirm.setOnClickListener(v -> {
-                            if (editText.getText().length() != 0) {
-                                this.nextSurvey(survey, -1, editText.getText().toString().trim());
+                        confirm.setOnClickListener(new View.OnClickListener() {
+                            @Override
+                            public void onClick(View v) {
+                                if (editText.getText().length() != 0) {
+                                    IDlgF_Survey.this.nextSurvey(survey, -1, editText.getText().toString().trim());
+                                }
                             }
                         });
                     }
@@ -463,26 +508,38 @@ public class IDlgF_Survey extends DialogFragment {
         }
     }
 
-    private void nextSurvey(IE_Survey pSurvey, int choice_id, @Nullable String answer) {
+    private void nextSurvey(final IE_Survey pSurvey, int choice_id, @Nullable String answer) {
         IApi_Request.Builder builder = new IApi_Request.Builder<IE_Survey>(IApi_Request.ENDPOINT_SURVEY_SUBMIT)
                 .opt_checkConn(this.getActivity())
                 .opt_tokenMandatory()
-                .opt_onPreExecute(() -> {
-                    this._ProgressView.getLayoutParams().height = this._Title.getHeight() + this._Subtitle.getHeight() + this._SurveyContainer.getHeight();
-                    this._Title.setVisibility(View.GONE);
-                    this._Subtitle.setVisibility(View.GONE);
-                    this._SurveyContainer.removeAllViews();
-                    this._ProgressView.setVisibility(View.VISIBLE);
-                })
-                .opt_converter(pSurvey::updateFrom)
-                .opt_receiver((responseState, survey) -> {
-                    if (responseState != IApi_Request.RESPONSE_STATE__OK) {
-                        Context context = this.getActivity();
-                        context = context != null ? context.getApplicationContext() : null;
-                        Toast.makeText(context, R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
+                .opt_onPreExecute(new Runnable() {
+                    @Override
+                    public void run() {
+                        IDlgF_Survey.this._ProgressView.getLayoutParams().height = IDlgF_Survey.this._Title.getHeight() + IDlgF_Survey.this._Subtitle.getHeight() + IDlgF_Survey.this._SurveyContainer.getHeight();
+                        IDlgF_Survey.this._Title.setVisibility(View.GONE);
+                        IDlgF_Survey.this._Subtitle.setVisibility(View.GONE);
+                        IDlgF_Survey.this._SurveyContainer.removeAllViews();
+                        IDlgF_Survey.this._ProgressView.setVisibility(View.VISIBLE);
                     }
-                    this._ProgressView.setVisibility(View.GONE);
-                    this.applySurvey(survey);
+                })
+                .opt_converter(new IApi_Request.ResponseConverter<IE_Survey>() {
+                    @Nullable
+                    @Override
+                    public IE_Survey convert(@NonNull JSONObject data) throws JSONException {
+                        return pSurvey.updateFrom(data);
+                    }
+                })
+                .opt_receiver(new IApi_Request.ResponseReceiver<IE_Survey>() {
+                    @Override
+                    public void onResponse(@IApi_Request.ResponseState int responseState, @Nullable IE_Survey survey) {
+                        if (responseState != IApi_Request.RESPONSE_STATE__OK) {
+                            Context context = IDlgF_Survey.this.getActivity();
+                            context = context != null ? context.getApplicationContext() : null;
+                            Toast.makeText(context, R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
+                        }
+                        IDlgF_Survey.this._ProgressView.setVisibility(View.GONE);
+                        IDlgF_Survey.this.applySurvey(survey);
+                    }
                 })
                 .opt_trials(2)
                 .param("survey_id", pSurvey.survey_id)

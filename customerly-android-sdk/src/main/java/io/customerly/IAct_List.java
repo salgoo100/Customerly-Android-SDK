@@ -44,10 +44,12 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -64,18 +66,38 @@ public final class IAct_List extends IAct_AInput implements Customerly.SDKActivi
     private SwipeRefreshLayout _FirstContact_SRL, _RecyclerView_SRL;
     private RecyclerView _ListRecyclerView;
     @NonNull private List<IE_Conversation> _Conversations = new ArrayList<>();
-    @NonNull private final SwipeRefreshLayout.OnRefreshListener _OnRefreshListener = () -> {
-        IE_JwtToken token = Customerly.get()._JwtToken;
-        if(token != null && (token.isUser() || token.isLead())) {
-            new IApi_Request.Builder<ArrayList<IE_Conversation>>(IApi_Request.ENDPOINT_CONVERSATION_RETRIEVE)
-                    .opt_checkConn(this)
-                    .opt_converter(data -> IU_Utils.fromJSONdataToList(data, "conversations", IE_Conversation::new))
-                    .opt_tokenMandatory()
-                    .opt_receiver((responseState, list) -> this.displayInterface(list))
-                    .opt_trials(2)
-                    .start();
-        } else {
-            this.displayInterface(null);
+    @NonNull private final SwipeRefreshLayout.OnRefreshListener _OnRefreshListener = new SwipeRefreshLayout.OnRefreshListener() {
+        @Override
+        public void onRefresh() {
+            IE_JwtToken token = Customerly.get()._JwtToken;
+            if (token != null && (token.isUser() || token.isLead())) {
+                new IApi_Request.Builder<ArrayList<IE_Conversation>>(IApi_Request.ENDPOINT_CONVERSATION_RETRIEVE)
+                        .opt_checkConn(IAct_List.this)
+                        .opt_converter(new IApi_Request.ResponseConverter<ArrayList<IE_Conversation>>() {
+                            @Nullable
+                            @Override
+                            public ArrayList<IE_Conversation> convert(@NonNull JSONObject data) throws JSONException {
+                                return IU_Utils.fromJSONdataToList(data, "conversations", new IU_Utils.JSONObjectTo<IE_Conversation>() {
+                                    @NonNull
+                                    @Override
+                                    public IE_Conversation from(@NonNull JSONObject pConversationItem) throws JSONException {
+                                        return new IE_Conversation(pConversationItem);
+                                    }
+                                });
+                            }
+                        })
+                        .opt_tokenMandatory()
+                        .opt_receiver(new IApi_Request.ResponseReceiver<ArrayList<IE_Conversation>>() {
+                            @Override
+                            public void onResponse(@IApi_Request.ResponseState int responseState, @Nullable ArrayList<IE_Conversation> list) {
+                                IAct_List.this.displayInterface(list);
+                            }
+                        })
+                        .opt_trials(2)
+                        .start();
+            } else {
+                IAct_List.this.displayInterface(null);
+            }
         }
     };
 
@@ -96,10 +118,13 @@ public final class IAct_List extends IAct_AInput implements Customerly.SDKActivi
             this._ListRecyclerView.setAdapter(new ConversationAdapter());
 
             this.input_layout.setVisibility(View.GONE);
-            this.findViewById(R.id.io_customerly__new_conversation_button).setOnClickListener(btn -> {
-                this.new_conversation_layout.setVisibility(View.GONE);
-                this.restoreAttachments();
-                this.input_layout.setVisibility(View.VISIBLE);
+            this.findViewById(R.id.io_customerly__new_conversation_button).setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View btn) {
+                    IAct_List.this.new_conversation_layout.setVisibility(View.GONE);
+                    IAct_List.this.restoreAttachments();
+                    IAct_List.this.input_layout.setVisibility(View.VISIBLE);
+                }
             });
 
             this._RecyclerView_SRL.setOnRefreshListener(this._OnRefreshListener);
@@ -127,7 +152,7 @@ public final class IAct_List extends IAct_AInput implements Customerly.SDKActivi
         }
 
         if(! filtered.isEmpty()) {
-            ArrayList<IE_Conversation> conversations = new ArrayList<>(this._Conversations);
+            final ArrayList<IE_Conversation> conversations = new ArrayList<>(this._Conversations);
             next_new_filtered:
             for (IE_Message new_filtered : filtered) {
                 for (IE_Conversation conversation : conversations) {
@@ -140,16 +165,27 @@ public final class IAct_List extends IAct_AInput implements Customerly.SDKActivi
                 conversations.add(new IE_Conversation(new_filtered.conversation_id, new_filtered.content_abstract, new_filtered.sent_datetime_sec, new_filtered.getWriterID(), new_filtered.getWriterType(), new_filtered.if_account__name));
             }
             //Sort the conversation by last message date
-            Collections.sort(conversations, (c1, c2) -> (int) (c2.last_message_date - c1.last_message_date));
-            this._ListRecyclerView.post(() -> {
-                this._Conversations = conversations;
-                this._ListRecyclerView.getAdapter().notifyDataSetChanged();
-                MediaPlayer mp = MediaPlayer.create(this, R.raw.notif_2);
-                mp.setOnCompletionListener(mp1 -> {
-                    mp1.reset();
-                    mp1.release();
-                });
-                mp.start();
+            Collections.sort(conversations, new Comparator<IE_Conversation>() {
+                @Override
+                public int compare(IE_Conversation c1, IE_Conversation c2) {
+                    return (int) (c2.last_message_date - c1.last_message_date);
+                }
+            });
+            this._ListRecyclerView.post(new Runnable() {
+                @Override
+                public void run() {
+                    IAct_List.this._Conversations = conversations;
+                    IAct_List.this._ListRecyclerView.getAdapter().notifyDataSetChanged();
+                    MediaPlayer mp = MediaPlayer.create(IAct_List.this, R.raw.notif_2);
+                    mp.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+                        @Override
+                        public void onCompletion(MediaPlayer mp) {
+                            mp.reset();
+                            mp.release();
+                        }
+                    });
+                    mp.start();
+                }
             });
         }
     }
@@ -195,12 +231,15 @@ public final class IAct_List extends IAct_AInput implements Customerly.SDKActivi
         }
     }
 
-    private void displayInterface(@Nullable ArrayList<IE_Conversation> pConversations) {
+    private void displayInterface(@Nullable final ArrayList<IE_Conversation> pConversations) {
         if(pConversations != null && pConversations.size() != 0) {
             this._FirstContact_SRL.setVisibility(View.GONE);
-            this._ListRecyclerView.post(() -> {
-                this._Conversations = pConversations;
-                this._ListRecyclerView.getAdapter().notifyDataSetChanged();
+            this._ListRecyclerView.post(new Runnable() {
+                @Override
+                public void run() {
+                    IAct_List.this._Conversations = pConversations;
+                    IAct_List.this._ListRecyclerView.getAdapter().notifyDataSetChanged();
+                }
             });
             this.input_layout.setVisibility(View.GONE);
             this.input_email_layout.setVisibility(View.GONE);
@@ -276,10 +315,30 @@ public final class IAct_List extends IAct_AInput implements Customerly.SDKActivi
                 final TextView io_customerly__layout_first_contact__last_activity = (TextView) this.findViewById(R.id.io_customerly__layout_first_contact__last_activity);
                 io_customerly__layout_first_contact__last_activity.setText(
                         IU_TimeAgoUtils.calculate(last_time_active_in_seconds,
-                                seconds -> this.getString(R.string.io_customerly__last_activity_now),
-                                minutes -> this.getResources().getQuantityString(R.plurals.io_customerly__last_activity_XXm_ago, (int)minutes, minutes),
-                                hours -> this.getResources().getQuantityString(R.plurals.io_customerly__last_activity_XXh_ago, (int)hours, hours),
-                                days -> this.getResources().getQuantityString(R.plurals.io_customerly__last_activity_XXd_ago, (int)days, days)));
+                                new IU_TimeAgoUtils.SecondsAgo<String>() {
+                                    @Override
+                                    public String onSeconds(long seconds) {
+                                        return IAct_List.this.getString(R.string.io_customerly__last_activity_now);
+                                    }
+                                },
+                                new IU_TimeAgoUtils.MinutesAgo<String>() {
+                                    @Override
+                                    public String onMinutes(long minutes) {
+                                        return IAct_List.this.getResources().getQuantityString(R.plurals.io_customerly__last_activity_XXm_ago, (int) minutes, minutes);
+                                    }
+                                },
+                                new IU_TimeAgoUtils.HoursAgo<String>() {
+                                    @Override
+                                    public String onHours(long hours) {
+                                        return IAct_List.this.getResources().getQuantityString(R.plurals.io_customerly__last_activity_XXh_ago, (int) hours, hours);
+                                    }
+                                },
+                                new IU_TimeAgoUtils.DaysAgo<String>() {
+                                    @Override
+                                    public String onDays(long days) {
+                                        return IAct_List.this.getResources().getQuantityString(R.plurals.io_customerly__last_activity_XXd_ago, (int) days, days);
+                                    }
+                                }));
                 io_customerly__layout_first_contact__last_activity.setVisibility(View.VISIBLE);
             }
 
@@ -299,7 +358,7 @@ public final class IAct_List extends IAct_AInput implements Customerly.SDKActivi
     }
 
     @Override
-    protected void onInputActionSend_PerformSend(@NonNull String pMessage, @NonNull IE_Attachment[] pAttachments, @Nullable String ghostToVisitorEmail) {
+    protected void onInputActionSend_PerformSend(@NonNull final String pMessage, @NonNull final IE_Attachment[] pAttachments, @Nullable final String ghostToVisitorEmail) {
         IE_JwtToken token = Customerly.get()._JwtToken;
         if((token == null || token.isAnonymous())) {
             if(ghostToVisitorEmail == null) {
@@ -308,34 +367,37 @@ public final class IAct_List extends IAct_AInput implements Customerly.SDKActivi
 
                 final EditText input_email_edit_text = (EditText) this.findViewById(R.id.io_customerly__input_email_edit_text);
                 input_email_edit_text.requestFocus();
-                this.findViewById(R.id.io_customerly__input_email_button).setOnClickListener(btn -> {
-                    final String email = input_email_edit_text.getText().toString().trim().toLowerCase(Locale.ITALY);
-                    if (Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
-                        this.input_email_layout.setVisibility(View.GONE);
-                        input_email_edit_text.setText(null);
-                        this.input_layout.setVisibility(View.VISIBLE);
-                        this.onInputActionSend_PerformSend(pMessage, pAttachments, email);
-                    } else {
-                        if (input_email_edit_text.getTag() == null) {
-                            input_email_edit_text.setTag(new Object[0]);
-                            final int input_email_edit_text__originalColor = input_email_edit_text.getTextColors().getDefaultColor();
-                            input_email_edit_text.setTextColor(Color.RED);
-                            input_email_edit_text.addTextChangedListener(new TextWatcher() {
-                                @Override
-                                public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-                                }
+                this.findViewById(R.id.io_customerly__input_email_button).setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View btn) {
+                        final String email = input_email_edit_text.getText().toString().trim().toLowerCase(Locale.ITALY);
+                        if (Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                            IAct_List.this.input_email_layout.setVisibility(View.GONE);
+                            input_email_edit_text.setText(null);
+                            IAct_List.this.input_layout.setVisibility(View.VISIBLE);
+                            IAct_List.this.onInputActionSend_PerformSend(pMessage, pAttachments, email);
+                        } else {
+                            if (input_email_edit_text.getTag() == null) {
+                                input_email_edit_text.setTag(new Object[0]);
+                                final int input_email_edit_text__originalColor = input_email_edit_text.getTextColors().getDefaultColor();
+                                input_email_edit_text.setTextColor(Color.RED);
+                                input_email_edit_text.addTextChangedListener(new TextWatcher() {
+                                    @Override
+                                    public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+                                    }
 
-                                @Override
-                                public void afterTextChanged(Editable s) {
-                                }
+                                    @Override
+                                    public void afterTextChanged(Editable s) {
+                                    }
 
-                                @Override
-                                public void onTextChanged(CharSequence s, int start, int before, int count) {
-                                    input_email_edit_text.setTextColor(input_email_edit_text__originalColor);
-                                    input_email_edit_text.removeTextChangedListener(this);
-                                    input_email_edit_text.setTag(null);
-                                }
-                            });
+                                    @Override
+                                    public void onTextChanged(CharSequence s, int start, int before, int count) {
+                                        input_email_edit_text.setTextColor(input_email_edit_text__originalColor);
+                                        input_email_edit_text.removeTextChangedListener(this);
+                                        input_email_edit_text.setTag(null);
+                                    }
+                                });
+                            }
                         }
                     }
                 });
@@ -344,53 +406,71 @@ public final class IAct_List extends IAct_AInput implements Customerly.SDKActivi
                 new IApi_Request.Builder<Object[]>(IApi_Request.ENDPOINT_PING)
                         .opt_checkConn(this)
                         .param("lead_email", ghostToVisitorEmail)
-                        .opt_converter(root -> new Object[0])
-                        .opt_receiver((responseState, _void) -> {
-                            if(_void == null) {
-                                if(progressDialog != null) {
-                                    try {
-                                        progressDialog.dismiss();
-                                    } catch (IllegalStateException ignored) { }
-                                }
-                                this.input_input.setText(pMessage);
-                                for(IE_Attachment a : pAttachments) {
-                                    a.addAttachmentToInput(this);
-                                }
-                                Toast.makeText(IAct_List.this.getApplicationContext(), R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
-                            } else {
-                                new IApi_Request.Builder<Long>(IApi_Request.ENDPOINT_MESSAGE_SEND)
-                                        .opt_tokenMandatory()
-                                        .opt_converter(data -> {
-                                            JSONObject conversation = data.optJSONObject("conversation");
-                                            JSONObject message = data.optJSONObject("message");
-                                            if(conversation != null && message != null) {
-                                                Customerly.get().__SOCKET_SEND_Message(data.optLong("timestamp", -1L));
-                                                long conversation_id = message.optLong("conversation_id", -1L);
-                                                return conversation_id != -1L ? conversation_id : null;
-                                            } else {
-                                                return null;
-                                            }
-                                        })
-                                        .opt_receiver((message_send_responseState, message_send_conversationID) -> {
-                                            if(progressDialog != null) {
-                                                try {
-                                                    progressDialog.dismiss();
-                                                } catch (IllegalStateException ignored) { }
-                                            }
-                                            if(message_send_responseState == IApi_Request.RESPONSE_STATE__OK && message_send_conversationID != null) {
-                                                this.openConversationById(message_send_conversationID, true);
-                                            } else {
-                                                this.input_input.setText(pMessage);
-                                                for(IE_Attachment a : pAttachments) {
-                                                    a.addAttachmentToInput(this);
+                        .opt_converter(new IApi_Request.ResponseConverter<Object[]>() {
+                            @Nullable
+                            @Override
+                            public Object[] convert(@NonNull JSONObject root) throws JSONException {
+                                return new Object[0];
+                            }
+                        })
+                        .opt_receiver(new IApi_Request.ResponseReceiver<Object[]>() {
+                            @Override
+                            public void onResponse(@IApi_Request.ResponseState int responseState, @Nullable Object[] _void) {
+                                if (_void == null) {
+                                    if (progressDialog != null) {
+                                        try {
+                                            progressDialog.dismiss();
+                                        } catch (IllegalStateException ignored) {
+                                        }
+                                    }
+                                    IAct_List.this.input_input.setText(pMessage);
+                                    for (IE_Attachment a : pAttachments) {
+                                        a.addAttachmentToInput(IAct_List.this);
+                                    }
+                                    Toast.makeText(IAct_List.this.getApplicationContext(), R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
+                                } else {
+                                    new IApi_Request.Builder<Long>(IApi_Request.ENDPOINT_MESSAGE_SEND)
+                                            .opt_tokenMandatory()
+                                            .opt_converter(new IApi_Request.ResponseConverter<Long>() {
+                                                @Nullable
+                                                @Override
+                                                public Long convert(@NonNull JSONObject data) throws JSONException {
+                                                    JSONObject conversation = data.optJSONObject("conversation");
+                                                    JSONObject message = data.optJSONObject("message");
+                                                    if (conversation != null && message != null) {
+                                                        Customerly.get().__SOCKET_SEND_Message(data.optLong("timestamp", -1L));
+                                                        long conversation_id = message.optLong("conversation_id", -1L);
+                                                        return conversation_id != -1L ? conversation_id : null;
+                                                    } else {
+                                                        return null;
+                                                    }
                                                 }
-                                                Toast.makeText(IAct_List.this.getApplicationContext(), R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
-                                            }
-                                        })
-                                        .opt_trials(2)
-                                        .param("message", pMessage)
-                                        .param("attachments", IE_Attachment.toSendJSONObject(this, pAttachments))
-                                        .start();
+                                            })
+                                            .opt_receiver(new IApi_Request.ResponseReceiver<Long>() {
+                                                @Override
+                                                public void onResponse(@IApi_Request.ResponseState int message_send_responseState, @Nullable Long message_send_conversationID) {
+                                                    if (progressDialog != null) {
+                                                        try {
+                                                            progressDialog.dismiss();
+                                                        } catch (IllegalStateException ignored) {
+                                                        }
+                                                    }
+                                                    if (message_send_responseState == IApi_Request.RESPONSE_STATE__OK && message_send_conversationID != null) {
+                                                        IAct_List.this.openConversationById(message_send_conversationID, true);
+                                                    } else {
+                                                        IAct_List.this.input_input.setText(pMessage);
+                                                        for (IE_Attachment a : pAttachments) {
+                                                            a.addAttachmentToInput(IAct_List.this);
+                                                        }
+                                                        Toast.makeText(IAct_List.this.getApplicationContext(), R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
+                                                    }
+                                                }
+                                            })
+                                            .opt_trials(2)
+                                            .param("message", pMessage)
+                                            .param("attachments", IE_Attachment.toSendJSONObject(IAct_List.this, pAttachments))
+                                            .start();
+                                }
                             }
                         })
                         .start();
@@ -400,31 +480,39 @@ public final class IAct_List extends IAct_AInput implements Customerly.SDKActivi
             new IApi_Request.Builder<Long>(IApi_Request.ENDPOINT_MESSAGE_SEND)
                     .opt_checkConn(this)
                     .opt_tokenMandatory()
-                    .opt_converter(data -> {
-                        JSONObject conversation = data.optJSONObject("conversation");
-                        JSONObject message = data.optJSONObject("message");
-                        if(conversation != null && message != null) {
-                            Customerly.get().__SOCKET_SEND_Message(data.optLong("timestamp", -1L));
-                            long conversation_id = message.optLong("conversation_id", -1L);
-                            return conversation_id != -1L ? conversation_id : null;
-                        } else {
-                            return null;
+                    .opt_converter(new IApi_Request.ResponseConverter<Long>() {
+                        @Nullable
+                        @Override
+                        public Long convert(@NonNull JSONObject data) throws JSONException {
+                            JSONObject conversation = data.optJSONObject("conversation");
+                            JSONObject message = data.optJSONObject("message");
+                            if (conversation != null && message != null) {
+                                Customerly.get().__SOCKET_SEND_Message(data.optLong("timestamp", -1L));
+                                long conversation_id = message.optLong("conversation_id", -1L);
+                                return conversation_id != -1L ? conversation_id : null;
+                            } else {
+                                return null;
+                            }
                         }
                     })
-                    .opt_receiver((responseState, conversationID) -> {
-                        if(progressDialog != null) {
-                            try {
-                                progressDialog.dismiss();
-                            } catch (IllegalStateException ignored) { }
-                        }
-                        if(responseState == IApi_Request.RESPONSE_STATE__OK && conversationID != null) {
-                            this.openConversationById(conversationID, ghostToVisitorEmail != null);
-                        } else {
-                            this.input_input.setText(pMessage);
-                            for(IE_Attachment a : pAttachments) {
-                                a.addAttachmentToInput(this);
+                    .opt_receiver(new IApi_Request.ResponseReceiver<Long>() {
+                        @Override
+                        public void onResponse(@IApi_Request.ResponseState int responseState, @Nullable Long conversationID) {
+                            if (progressDialog != null) {
+                                try {
+                                    progressDialog.dismiss();
+                                } catch (IllegalStateException ignored) {
+                                }
                             }
-                            Toast.makeText(IAct_List.this.getApplicationContext(), R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
+                            if (responseState == IApi_Request.RESPONSE_STATE__OK && conversationID != null) {
+                                IAct_List.this.openConversationById(conversationID, ghostToVisitorEmail != null);
+                            } else {
+                                IAct_List.this.input_input.setText(pMessage);
+                                for (IE_Attachment a : pAttachments) {
+                                    a.addAttachmentToInput(IAct_List.this);
+                                }
+                                Toast.makeText(IAct_List.this.getApplicationContext(), R.string.io_customerly__connection_error, Toast.LENGTH_SHORT).show();
+                            }
                         }
                     })
                     .opt_trials(2)
@@ -473,7 +561,12 @@ public final class IAct_List extends IAct_AInput implements Customerly.SDKActivi
             this._Nome = (TextView)this.itemView.findViewById(R.id.io_customerly__name);
             this._LastMessage = (TextView)this.itemView.findViewById(R.id.io_customerly__last_message);
             this._Time = (TextView)this.itemView.findViewById(R.id.io_customerly__time);
-            this.itemView.setOnClickListener(item_view -> openConversationById(this._ConversationID, false));
+            this.itemView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View item_view) {
+                    openConversationById(ConversationVH.this._ConversationID, false);
+                }
+            });
         }
         private void apply(@NonNull IE_Conversation pConversation) {
             this._ConversationID = pConversation.conversation_id;

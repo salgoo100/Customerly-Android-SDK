@@ -270,50 +270,58 @@ class IU_RemoteImageHandler {
                 this._PendingDiskRequests.put(hash, pLru_Request);
                 this._PendingNetworkRequests.remove(hash);
             }
-            this._DiskHandler.post(() -> {
-                final Request disk_req;
-                //noinspection SpellCheckingInspection
-                synchronized (this) {
-                    int hash = pLru_Request.getRequestHash();
-                    disk_req = _PendingDiskRequests.get(hash);
-                    if(disk_req != null) {
-                        _PendingDiskRequests.remove(hash);
-                    }
+            this._DiskHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    final Request disk_req;
+                    //noinspection SpellCheckingInspection
+                    synchronized (IU_RemoteImageHandler.this) {
+                        int hash = pLru_Request.getRequestHash();
+                        disk_req = _PendingDiskRequests.get(hash);
+                        if (disk_req != null) {
+                            _PendingDiskRequests.remove(hash);
+                        }
                 /*
                 In questo modo anche se nel frattempo c'è stata una successiva richiesta per la stessa ImageView (es: ImageView riciclata da un'adapter di una RecyclerView), viene elaborata la richiesta più recente.
                 Atomicamente viene anche rimossa la richiesta, quindi il callback pendente nell'handler quando verrà eseguito a questo punto del codice troverà null e al successivo check req != null interromperà l'esecuzione
                  */
-                }
+                    }
 
-                if (disk_req != null) {
-                    String disk_key = disk_req.toString();
-                    try {
-                        File bitmapFile = new File(new File(disk_req.cacheDir, CUSTOMERLY_SDK_NAME).toString(), disk_key);
-                        if (bitmapFile.exists()) {
-                            if (System.currentTimeMillis() - bitmapFile.lastModified() < 24 * 60 * 60 * 1000) {
-                                try {
-                                    Bitmap bmp = BitmapFactory.decodeFile(bitmapFile.toString());
-                                    //Add Bitmap to LruMemory
-                                    this._LruCache.put(disk_key, bmp);
-                                    if(disk_req.targetIV != null) {
-                                        disk_req.targetIV.post(() -> {
-                                            if (disk_req.scaleType != null && disk_req.targetIV != null) {
-                                                disk_req.targetIV.setScaleType(disk_req.scaleType);
-                                            }
-                                            disk_req.targetIV.setImageBitmap(bmp);
-                                        });
-                                    } else if(disk_req.target != null) {
-                                        disk_req.target.image_placeholder_error(bmp);
+                    if (disk_req != null) {
+                        String disk_key = disk_req.toString();
+                        try {
+                            File bitmapFile = new File(new File(disk_req.cacheDir, CUSTOMERLY_SDK_NAME).toString(), disk_key);
+                            if (bitmapFile.exists()) {
+                                if (System.currentTimeMillis() - bitmapFile.lastModified() < 24 * 60 * 60 * 1000) {
+                                    try {
+                                        final Bitmap bmp = BitmapFactory.decodeFile(bitmapFile.toString());
+                                        //Add Bitmap to LruMemory
+                                        IU_RemoteImageHandler.this._LruCache.put(disk_key, bmp);
+                                        if (disk_req.targetIV != null) {
+                                            disk_req.targetIV.post(new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    if (disk_req.scaleType != null && disk_req.targetIV != null) {
+                                                        disk_req.targetIV.setScaleType(disk_req.scaleType);
+                                                    }
+                                                    disk_req.targetIV.setImageBitmap(bmp);
+                                                }
+                                            });
+                                        } else if (disk_req.target != null) {
+                                            disk_req.target.image_placeholder_error(bmp);
+                                        }
+                                        return;
+                                    } catch (OutOfMemoryError ignored) {
                                     }
-                                    return;
-                                } catch (OutOfMemoryError ignored) { }
-                            } else {
-                                //noinspection ResultOfMethodCallIgnored
-                                bitmapFile.delete();
+                                } else {
+                                    //noinspection ResultOfMethodCallIgnored
+                                    bitmapFile.delete();
+                                }
                             }
+                        } catch (OutOfMemoryError ignored) {
                         }
-                    } catch (OutOfMemoryError ignored) { }
-                    this.handleNetwork(disk_req);
+                        IU_RemoteImageHandler.this.handleNetwork(disk_req);
+                    }
                 }
             });
         }
@@ -324,209 +332,227 @@ class IU_RemoteImageHandler {
             synchronized (this) {
                 this._PendingNetworkRequests.put(pDisk_Request.getRequestHash(), pDisk_Request);
             }
-            this._NetworkHandler.post(() -> {
-                final Request network_req;
-                //noinspection SpellCheckingInspection
-                synchronized (this) {
-                    int hash = pDisk_Request.getRequestHash();
-                    network_req = _PendingNetworkRequests.get(hash);
-                    if(network_req != null) {
-                        _PendingNetworkRequests.remove(hash);
-                    }
+            this._NetworkHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    final Request network_req;
+                    //noinspection SpellCheckingInspection
+                    synchronized (IU_RemoteImageHandler.this) {
+                        int hash = pDisk_Request.getRequestHash();
+                        network_req = _PendingNetworkRequests.get(hash);
+                        if (network_req != null) {
+                            _PendingNetworkRequests.remove(hash);
+                        }
                 /*
                 In questo modo anche se nel frattempo c'è stata una successiva richiesta per la stessa ImageView (es: ImageView riciclata da un'adapter di una RecyclerView), viene elaborata la richiesta più recente.
                 Atomicamente viene anche rimossa la richiesta, quindi il callback pendente nell'handler quando verrà eseguito a questo punto del codice troverà null e al successivo check req != null interromperà l'esecuzione
                  */
-                }
+                    }
 
-                if (network_req != null) {
-                    try {
-                        Bitmap bmp;
-                        //Download bitmap da url
+                    if (network_req != null) {
                         try {
-                            HttpURLConnection connection = (HttpURLConnection) new URL(network_req.url).openConnection();
-                            connection.setReadTimeout(5000);
-                            connection.setDoInput(true);
-                            connection.connect();
-
-                            int status = connection.getResponseCode();
-                            while (status != HttpURLConnection.HTTP_OK &&
-                                    (status == HttpURLConnection.HTTP_MOVED_TEMP
-                                            || status == HttpURLConnection.HTTP_MOVED_PERM
-                                            || status == HttpURLConnection.HTTP_SEE_OTHER)) {
-                                //Url Redirect
-                                connection = (HttpURLConnection) new URL(connection.getHeaderField("Location")).openConnection();
-                                connection.connect();
-                                status = connection.getResponseCode();
-                            }
-
-                            bmp = BitmapFactory.decodeStream(connection.getInputStream());
-                        } catch (Exception e) {
-                            bmp = null;
-                        }
-
-                        //Bitmap resizing
-                        if (bmp != null && network_req.width != Request.DO_NOT_OVERRIDE_SIZE && network_req.height != Request.DO_NOT_OVERRIDE_SIZE) {
-                            int width = bmp.getWidth();
-                            int height = bmp.getHeight();
-                            float scaleWidth = ((float) network_req.width) / width;
-                            float scaleHeight = ((float) network_req.height) / height;
-                            // CREATE A MATRIX FOR THE MANIPULATION
-                            Matrix matrix = new Matrix();
-                            // RESIZE THE BIT MAP
-                            matrix.postScale(scaleWidth, scaleHeight);
-
-                            // "RECREATE" THE NEW BITMAP
-                            Bitmap resizedBitmap = Bitmap.createBitmap(bmp, 0, 0, width, height, matrix, false);
-
-                            if (resizedBitmap != bmp) {
-                                bmp.recycle();
-                            }
-                            bmp = resizedBitmap;
-                        }
-
-                        if (bmp != null && network_req.transformCircle) {
-                            int size = Math.min(bmp.getWidth(), bmp.getHeight());
-                            Bitmap squared = Bitmap.createBitmap(bmp, (bmp.getWidth() - size) / 2, (bmp.getHeight() - size) / 2, size, size);
-                            Bitmap result = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
-                            Paint paint = new Paint();
-                            paint.setShader(new BitmapShader(squared, BitmapShader.TileMode.CLAMP, BitmapShader.TileMode.CLAMP));
-                            paint.setAntiAlias(true);
-                            float r = size / 2f;
-                            new Canvas(result).drawCircle(r, r, r, paint);
-                            if (bmp != result) {
-                                bmp.recycle();
-                            }
-                            squared.recycle();
-                            bmp = result;
-                        }
-
-                        if (bmp != null) {
-                            synchronized (this) {
-                                int hash = network_req.getRequestHash();
-                                if (_PendingDiskRequests.get(hash) != null
-                                    ||
-                                        _PendingNetworkRequests.get(hash) != null) //noinspection SpellCheckingInspection
-                                {
-                                    // Nel frattempo che scaricava l'immagine da internet ed eventualmente applicava resize e transformCircle è staa fatta una nuova richiesta per la stessa ImageView quindi termina l'esecuzione attuale invalidando la bmp
-                                    bmp.recycle();
-                                    return;
-                                }
-                            }
-                            final Bitmap post_bmp = bmp;
-                            if(network_req.targetIV != null) {
-                                network_req.targetIV.post(() -> {
-                                    if (network_req.scaleType != null && network_req.targetIV != null) {
-                                        network_req.targetIV.setScaleType(network_req.scaleType);
-                                    }
-                                    if (!post_bmp.isRecycled()) {
-                                        network_req.targetIV.setImageBitmap(post_bmp);
-                                    }
-                                });
-                            } else if(network_req.target != null && !post_bmp.isRecycled()) {
-                                network_req.target.image_placeholder_error(post_bmp);
-                            }
-
-                            String network_key = network_req.toString();
-                            //Add image to LruMemory
-                            _LruCache.put(network_key, bmp);
-
-                            File fullCacheDir = new File(network_req.cacheDir, CUSTOMERLY_SDK_NAME);
-                            //Initialize cache dir if needed
-                            if (!fullCacheDir.exists()) {
-                                //noinspection ResultOfMethodCallIgnored
-                                fullCacheDir.mkdirs();
-                                try {
-                                    //noinspection ResultOfMethodCallIgnored
-                                    new File(fullCacheDir.toString(), ".nomedia").createNewFile();
-                                } catch (IOException ignored) { }
-                            }
-
-                            //Store on disk cache
-                            FileOutputStream out = null;
+                            Bitmap bmp;
+                            //Download bitmap da url
                             try {
-                                File bitmapFile = new File(fullCacheDir.toString(), network_key);
-                                bmp.compress(Bitmap.CompressFormat.PNG, 100, out = new FileOutputStream(bitmapFile));
-                                if(_DiskCacheSize == -1) {
-                                    long size = 0;
-                                    for (File file : fullCacheDir.listFiles()) {
-                                        if (file.isFile()) {
-                                            size += file.length();
-                                        } /*else {
+                                HttpURLConnection connection = (HttpURLConnection) new URL(network_req.url).openConnection();
+                                connection.setReadTimeout(5000);
+                                connection.setDoInput(true);
+                                connection.connect();
+
+                                int status = connection.getResponseCode();
+                                while (status != HttpURLConnection.HTTP_OK &&
+                                        (status == HttpURLConnection.HTTP_MOVED_TEMP
+                                                || status == HttpURLConnection.HTTP_MOVED_PERM
+                                                || status == HttpURLConnection.HTTP_SEE_OTHER)) {
+                                    //Url Redirect
+                                    connection = (HttpURLConnection) new URL(connection.getHeaderField("Location")).openConnection();
+                                    connection.connect();
+                                    status = connection.getResponseCode();
+                                }
+
+                                bmp = BitmapFactory.decodeStream(connection.getInputStream());
+                            } catch (Exception e) {
+                                bmp = null;
+                            }
+
+                            //Bitmap resizing
+                            if (bmp != null && network_req.width != Request.DO_NOT_OVERRIDE_SIZE && network_req.height != Request.DO_NOT_OVERRIDE_SIZE) {
+                                int width = bmp.getWidth();
+                                int height = bmp.getHeight();
+                                float scaleWidth = ((float) network_req.width) / width;
+                                float scaleHeight = ((float) network_req.height) / height;
+                                // CREATE A MATRIX FOR THE MANIPULATION
+                                Matrix matrix = new Matrix();
+                                // RESIZE THE BIT MAP
+                                matrix.postScale(scaleWidth, scaleHeight);
+
+                                // "RECREATE" THE NEW BITMAP
+                                Bitmap resizedBitmap = Bitmap.createBitmap(bmp, 0, 0, width, height, matrix, false);
+
+                                if (resizedBitmap != bmp) {
+                                    bmp.recycle();
+                                }
+                                bmp = resizedBitmap;
+                            }
+
+                            if (bmp != null && network_req.transformCircle) {
+                                int size = Math.min(bmp.getWidth(), bmp.getHeight());
+                                Bitmap squared = Bitmap.createBitmap(bmp, (bmp.getWidth() - size) / 2, (bmp.getHeight() - size) / 2, size, size);
+                                Bitmap result = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+                                Paint paint = new Paint();
+                                paint.setShader(new BitmapShader(squared, BitmapShader.TileMode.CLAMP, BitmapShader.TileMode.CLAMP));
+                                paint.setAntiAlias(true);
+                                float r = size / 2f;
+                                new Canvas(result).drawCircle(r, r, r, paint);
+                                if (bmp != result) {
+                                    bmp.recycle();
+                                }
+                                squared.recycle();
+                                bmp = result;
+                            }
+
+                            if (bmp != null) {
+                                synchronized (IU_RemoteImageHandler.this) {
+                                    int hash = network_req.getRequestHash();
+                                    if (_PendingDiskRequests.get(hash) != null
+                                            ||
+                                            _PendingNetworkRequests.get(hash) != null) //noinspection SpellCheckingInspection
+                                    {
+                                        // Nel frattempo che scaricava l'immagine da internet ed eventualmente applicava resize e transformCircle è staa fatta una nuova richiesta per la stessa ImageView quindi termina l'esecuzione attuale invalidando la bmp
+                                        bmp.recycle();
+                                        return;
+                                    }
+                                }
+                                final Bitmap post_bmp = bmp;
+                                if (network_req.targetIV != null) {
+                                    network_req.targetIV.post(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            if (network_req.scaleType != null && network_req.targetIV != null) {
+                                                network_req.targetIV.setScaleType(network_req.scaleType);
+                                            }
+                                            if (!post_bmp.isRecycled()) {
+                                                network_req.targetIV.setImageBitmap(post_bmp);
+                                            }
+                                        }
+                                    });
+                                } else if (network_req.target != null && !post_bmp.isRecycled()) {
+                                    network_req.target.image_placeholder_error(post_bmp);
+                                }
+
+                                String network_key = network_req.toString();
+                                //Add image to LruMemory
+                                _LruCache.put(network_key, bmp);
+
+                                File fullCacheDir = new File(network_req.cacheDir, CUSTOMERLY_SDK_NAME);
+                                //Initialize cache dir if needed
+                                if (!fullCacheDir.exists()) {
+                                    //noinspection ResultOfMethodCallIgnored
+                                    fullCacheDir.mkdirs();
+                                    try {
+                                        //noinspection ResultOfMethodCallIgnored
+                                        new File(fullCacheDir.toString(), ".nomedia").createNewFile();
+                                    } catch (IOException ignored) {
+                                    }
+                                }
+
+                                //Store on disk cache
+                                FileOutputStream out = null;
+                                try {
+                                    File bitmapFile = new File(fullCacheDir.toString(), network_key);
+                                    bmp.compress(Bitmap.CompressFormat.PNG, 100, out = new FileOutputStream(bitmapFile));
+                                    if (_DiskCacheSize == -1) {
+                                        long size = 0;
+                                        for (File file : fullCacheDir.listFiles()) {
+                                            if (file.isFile()) {
+                                                size += file.length();
+                                            } /*else {
                                         size += getFolderSize(file); No subfolder or recursion would be needed
                                     }*/
+                                        }
+                                        _DiskCacheSize = size;
+                                    } else {
+                                        _DiskCacheSize += bitmapFile.length();
                                     }
-                                    _DiskCacheSize = size;
-                                } else {
-                                    _DiskCacheSize += bitmapFile.length();
-                                }
-                                if(_DiskCacheSize > MAX_DISK_CACHE_SIZE) {
-                                    long oldestFileLastModifiedDateTime = Long.MAX_VALUE;
-                                    File oldestFile = null;
-                                    for (File file : fullCacheDir.listFiles()) {
-                                        if (file.isFile()) {
-                                            long lastModified = file.lastModified();
-                                            if (lastModified < oldestFileLastModifiedDateTime) {
-                                                oldestFileLastModifiedDateTime = lastModified;
-                                                oldestFile = file;
+                                    if (_DiskCacheSize > MAX_DISK_CACHE_SIZE) {
+                                        long oldestFileLastModifiedDateTime = Long.MAX_VALUE;
+                                        File oldestFile = null;
+                                        for (File file : fullCacheDir.listFiles()) {
+                                            if (file.isFile()) {
+                                                long lastModified = file.lastModified();
+                                                if (lastModified < oldestFileLastModifiedDateTime) {
+                                                    oldestFileLastModifiedDateTime = lastModified;
+                                                    oldestFile = file;
+                                                }
+                                            }
+                                        }
+                                        if (oldestFile != null) {
+                                            long size = oldestFile.length();
+                                            if (oldestFile.delete()) {
+                                                _DiskCacheSize -= size;
                                             }
                                         }
                                     }
-                                    if(oldestFile != null) {
-                                        long size = oldestFile.length();
-                                        if(oldestFile.delete()) {
-                                            _DiskCacheSize -= size;
+                                } catch (Exception ignored) {
+                                } finally {
+                                    if (out != null) {
+                                        try {
+                                            out.close();
+                                        } catch (IOException ignored) {
                                         }
                                     }
                                 }
-                            } catch (Exception ignored) {
-                            } finally {
-                                if (out != null) {
-                                    try {
-                                        out.close();
-                                    } catch (IOException ignored) { }
+                            } else {
+                                //Set errorImage
+                                if (network_req.errorResID != 0) {
+                                    if (network_req.targetIV != null) {
+                                        network_req.targetIV.post(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                if (network_req.scaleType != null && network_req.targetIV != null) {
+                                                    network_req.targetIV.setScaleType(network_req.scaleType);
+                                                }
+                                                network_req.targetIV.setImageResource(network_req.errorResID);
+                                            }
+                                        });
+                                    } else if (network_req.target != null) {
+                                        network_req.target.placeholder_error(network_req.errorResID);
+                                    }
+                                } else if (network_req.errorBMP != null && !network_req.errorBMP.isRecycled()) {
+                                    if (network_req.targetIV != null) {
+                                        network_req.targetIV.post(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                if (network_req.scaleType != null && network_req.targetIV != null) {
+                                                    network_req.targetIV.setScaleType(network_req.scaleType);
+                                                }
+                                                if (!network_req.errorBMP.isRecycled()) {
+                                                    network_req.targetIV.setImageBitmap(network_req.errorBMP);
+                                                }
+                                            }
+                                        });
+                                    } else if (network_req.target != null) {
+                                        network_req.target.image_placeholder_error(network_req.errorBMP);
+                                    }
+                                } else if (network_req.errorDrawable != null) {
+                                    if (network_req.targetIV != null) {
+                                        network_req.targetIV.post(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                if (network_req.scaleType != null && network_req.targetIV != null) {
+                                                    network_req.targetIV.setScaleType(network_req.scaleType);
+                                                }
+                                                network_req.targetIV.setImageDrawable(network_req.errorDrawable);
+                                            }
+                                        });
+                                    } else if (network_req.target != null) {
+                                        network_req.target.placeholder_error(network_req.errorDrawable);
+                                    }
                                 }
                             }
-                        } else {
-                            //Set errorImage
-                            if (network_req.errorResID != 0) {
-                                if(network_req.targetIV != null) {
-                                    network_req.targetIV.post(() -> {
-                                        if (network_req.scaleType != null && network_req.targetIV != null) {
-                                            network_req.targetIV.setScaleType(network_req.scaleType);
-                                        }
-                                        network_req.targetIV.setImageResource(network_req.errorResID);
-                                    });
-                                } else if(network_req.target != null) {
-                                    network_req.target.placeholder_error(network_req.errorResID);
-                                }
-                            } else if (network_req.errorBMP != null && !network_req.errorBMP.isRecycled()) {
-                                if(network_req.targetIV != null) {
-                                    network_req.targetIV.post(() -> {
-                                        if (network_req.scaleType != null && network_req.targetIV != null) {
-                                            network_req.targetIV.setScaleType(network_req.scaleType);
-                                        }
-                                        if (!network_req.errorBMP.isRecycled()) {
-                                            network_req.targetIV.setImageBitmap(network_req.errorBMP);
-                                        }
-                                    });
-                                } else if(network_req.target != null) {
-                                    network_req.target.image_placeholder_error(network_req.errorBMP);
-                                }
-                            } else if (network_req.errorDrawable != null) {
-                                if(network_req.targetIV != null) {
-                                    network_req.targetIV.post(() -> {
-                                        if (network_req.scaleType != null && network_req.targetIV != null) {
-                                            network_req.targetIV.setScaleType(network_req.scaleType);
-                                        }
-                                        network_req.targetIV.setImageDrawable(network_req.errorDrawable);
-                                    });
-                                } else if(network_req.target != null) {
-                                    network_req.target.placeholder_error(network_req.errorDrawable);
-                                }
-                            }
+                        } catch (OutOfMemoryError ignored) {
                         }
-                    } catch (OutOfMemoryError ignored) { }
+                    }
                 }
             });
         }
@@ -614,7 +640,7 @@ class IU_RemoteImageHandler {
             return this.targetIV != null ? this.targetIV.hashCode() : this.target != null ? this.target.hashCode() : -1;
         }
 
-        public interface Target {
+        interface Target {
             void image_placeholder_error(@NonNull Bitmap bmp);
             void placeholder_error(@NonNull Drawable drawable);
             void placeholder_error(@DrawableRes int resID);

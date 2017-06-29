@@ -94,14 +94,44 @@ class IE_Conversation {
         return this.last_message_abstract;
     }
 
-    @NonNull String getFormattedLastMessageTime(@NonNull Resources resources) {
+    @NonNull String getFormattedLastMessageTime(@NonNull final Resources resources) {
         return IU_TimeAgoUtils.calculate(this.last_message_date,
-                seconds -> resources.getString(R.string.io_customerly__XX_sec_ago, seconds),
-                minutes -> resources.getString(R.string.io_customerly__XX_min_ago, minutes),
-                hours -> resources.getQuantityString(R.plurals.io_customerly__XX_hours_ago, (int)hours, hours),
-                days -> resources.getQuantityString(R.plurals.io_customerly__XX_days_ago, (int)days, days),
-                weeks -> resources.getQuantityString(R.plurals.io_customerly__XX_weeks_ago, (int)weeks, weeks),
-                months -> resources.getQuantityString(R.plurals.io_customerly__XX_months_ago, (int)months, months));
+                new IU_TimeAgoUtils.SecondsAgo<String>() {
+                    @Override
+                    public String onSeconds(long seconds) {
+                        return resources.getString(R.string.io_customerly__XX_sec_ago, seconds);
+                    }
+                },
+                new IU_TimeAgoUtils.MinutesAgo<String>() {
+                    @Override
+                    public String onMinutes(long minutes) {
+                        return resources.getString(R.string.io_customerly__XX_min_ago, minutes);
+                    }
+                },
+                new IU_TimeAgoUtils.HoursAgo<String>() {
+                    @Override
+                    public String onHours(long hours) {
+                        return resources.getQuantityString(R.plurals.io_customerly__XX_hours_ago, (int) hours, hours);
+                    }
+                },
+                new IU_TimeAgoUtils.DaysAgo<String>() {
+                    @Override
+                    public String onDays(long days) {
+                        return resources.getQuantityString(R.plurals.io_customerly__XX_days_ago, (int) days, days);
+                    }
+                },
+                new IU_TimeAgoUtils.WeeksAgo<String>() {
+                    @Override
+                    public String onWeeks(long weeks) {
+                        return resources.getQuantityString(R.plurals.io_customerly__XX_weeks_ago, (int) weeks, weeks);
+                    }
+                },
+                new IU_TimeAgoUtils.MonthsAgo<String>() {
+                    @Override
+                    public String onMonths(long months) {
+                        return resources.getQuantityString(R.plurals.io_customerly__XX_months_ago, (int) months, months);
+                    }
+                });
     }
 
 }

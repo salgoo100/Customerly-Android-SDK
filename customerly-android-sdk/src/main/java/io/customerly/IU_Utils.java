@@ -130,20 +130,35 @@ class IU_Utils {
                 : resources.getColorStateList(colorStateListResID);
     }
 
-    @NonNull static Spanned fromHtml(@Nullable String message, @Nullable TextView tv, @Nullable LambdaUtil.V__NN_NN<Activity, String> pImageClickableSpan) {
-        return Commons_HtmlFormatter.fromHtml(message, tv, pImageClickableSpan, (context, source, handleDrawable) ->
+    @NonNull static Spanned fromHtml(@Nullable String message, @Nullable final TextView tv, @Nullable LambdaUtil.V__NN_NN<Activity, String> pImageClickableSpan) {
+        return Commons_HtmlFormatter.fromHtml(message, tv, pImageClickableSpan, new LambdaUtil.V__NN_NN_NN<Context, String, LambdaUtil.V__N<Drawable>>() {
+            @Override
+            public void lambda(@NonNull final Context context, @NonNull String source, @NonNull final LambdaUtil.V__N<Drawable> handleDrawable) {
                 Customerly.get()._RemoteImageHandler.request(new IU_RemoteImageHandler.Request()
-                .load(source)
-                .into(context, new IU_RemoteImageHandler.Request.Target() {
-                    @Override
-                    public void image_placeholder_error(@NonNull Bitmap bmp) {
-                        if(tv != null) {
-                            tv.post(() -> handleDrawable.lambda(new BitmapDrawable(context.getResources(), bmp)));
-                        }
-                    }
-                    @Override public void placeholder_error(@NonNull Drawable drawable) { }//Never called because no placeholder or error drawable provided in request
-                    @Override public void placeholder_error(@DrawableRes int resID) { }//Never called because no placeholder or error DrawableRes provided in request
-                })));
+                        .load(source)
+                        .into(context, new IU_RemoteImageHandler.Request.Target() {
+                            @Override
+                            public void image_placeholder_error(@NonNull final Bitmap bmp) {
+                                if (tv != null) {
+                                    tv.post(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            handleDrawable.lambda(new BitmapDrawable(context.getResources(), bmp));
+                                        }
+                                    });
+                                }
+                            }
+
+                            @Override
+                            public void placeholder_error(@NonNull Drawable drawable) {
+                            }//Never called because no placeholder or error drawable provided in request
+
+                            @Override
+                            public void placeholder_error(@DrawableRes int resID) {
+                            }//Never called because no placeholder or error DrawableRes provided in request
+                        }));
+            }
+        });
     }
 
     static String getNameFromUri(@NonNull Context context, @NonNull Uri uri) {

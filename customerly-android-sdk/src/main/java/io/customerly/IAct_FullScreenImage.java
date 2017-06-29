@@ -17,6 +17,7 @@ package io.customerly;
  */
 
 import android.Manifest;
+import android.content.DialogInterface;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -163,8 +164,12 @@ public final class IAct_FullScreenImage extends AppCompatActivity implements Cus
                 new AlertDialog.Builder(this)
                         .setTitle(R.string.io_customerly__permission_request)
                         .setMessage(R.string.io_customerly__permission_request_explanation_write)
-                        .setPositiveButton(android.R.string.ok, (dlg, which) ->
-                                ActivityCompat.requestPermissions(this, new String[]{ Manifest.permission.WRITE_EXTERNAL_STORAGE }, PERMISSION_REQUEST__WRITE_EXTERNAL_STORAGE))
+                        .setPositiveButton(android.R.string.ok, new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dlg, int which) {
+                                ActivityCompat.requestPermissions(IAct_FullScreenImage.this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, PERMISSION_REQUEST__WRITE_EXTERNAL_STORAGE);
+                            }
+                        })
                         .show();
             } else {
                 ActivityCompat.requestPermissions(this, new String[]{ Manifest.permission.WRITE_EXTERNAL_STORAGE }, PERMISSION_REQUEST__WRITE_EXTERNAL_STORAGE);
